@@ -24,11 +24,13 @@ Some things are known and by design rather than vulnerabilities:
 - **Admin keys are stored in plain text** in `~/.llmspend/<profile>/config.yaml`
   at mode 0600 in a 0700 directory — the same posture as `~/.aws/credentials`.
   Anyone who can read your home directory can use them.
-- **Admin keys can do more than llmspend does.** An OpenAI admin key manages
-  the org; an Anthropic Console admin key carries full Admin API access (Console
-  keys have no scopes). llmspend only ever sends `GET` — its HTTP client has no
-  other method — but the key itself is powerful. Give it an expiry where the
-  console offers one and revoke it when you stop using llmspend.
+- **Admin keys can do more than llmspend does.** Create the OpenAI key with
+  **Permissions → Read only**; that covers every llmspend command. An
+  Anthropic Console admin key cannot be limited — per Anthropic's docs it
+  carries full Admin API access (Console keys have no scopes) — so give it an
+  expiration. llmspend only ever sends `GET` — its HTTP client has no other
+  method — but the key itself may be powerful. Revoke it when you stop using
+  llmspend.
 - **What is printed.** `config show` and `orgs` mask keys to the prefix and the
   last four characters. `keys` prints the providers' own redacted hints, never a
   secret. `--verbose` logs method, URL and status only; headers are not logged.

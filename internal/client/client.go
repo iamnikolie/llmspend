@@ -83,7 +83,7 @@ func (e *APIError) generic() (reason, fix string) {
 		return "the admin key was rejected", "check it with 'llmspend config show' and 'llmspend orgs'; replace it with 'llmspend config add'"
 	case http.StatusForbidden:
 		if e.Provider == "openai" {
-			return "this key may not read the org", "use an OpenAI admin key (sk-admin-…) from platform.openai.com/settings/organization/admin-keys"
+			return "this key may not read this endpoint", "use an OpenAI admin key (sk-admin-…) with Read only or All permissions from platform.openai.com/settings/organization/admin-keys; a Restricted key needs read access to usage, billing and projects"
 		}
 		return "this key may not read the org", "use an Admin API key (sk-ant-admin01-…)"
 	case http.StatusNotFound:

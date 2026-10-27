@@ -15,9 +15,13 @@ One admin key per provider org, stored in a profile:
 `LLMSPEND_CONFIG`, default `default`).
 
 - OpenAI: org Owner opens https://platform.openai.com/settings/organization/admin-keys
-  → Create new admin key → copy `sk-admin-…`. Project keys (`sk-proj-…`) do not work.
+  → Create new admin key → name `llmspend`, **Permissions → Read only** → copy
+  `sk-admin-…`. Read only is enough for every llmspend command. Project keys
+  (`sk-proj-…`) do not work.
 - Anthropic: org admin opens https://platform.claude.com/settings/admin-keys →
-  Create admin key → copy `sk-ant-admin01-…`. Individual (non-organization)
+  Create admin key → name, expiration → copy `sk-ant-admin01-…`. Per Anthropic's
+  docs, Console admin keys have no selectable scopes (full Admin API access), so
+  there is no read-only choice; set an expiration. Individual (non-organization)
   accounts have no Admin API.
 
 ```
@@ -130,6 +134,7 @@ exclusive; a bare date includes that day. All dates are UTC.
   and tool fees.
 - An embeddings-heavy app shows up under `--kind embeddings`; the per-key
   split is `llmspend usage --kind embeddings --by key`.
-- Admin keys are powerful (Anthropic Console admin keys carry full admin access;
-  OpenAI admin keys manage the org). llmspend only reads, but keep the key in
-  this config only and revoke it in the console when done.
+- Admin keys are powerful. Create OpenAI ones as Read only; Anthropic Console
+  admin keys cannot be limited (full Admin API access), so give them an
+  expiration. llmspend only reads, but keep the key in this config only and
+  revoke it in the console when done.

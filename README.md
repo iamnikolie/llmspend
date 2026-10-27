@@ -91,10 +91,15 @@ One **admin key per org**. Regular API keys cannot read usage or cost.
 
 - **OpenAI** — an org Owner opens
   [Settings → Organization → Admin keys](https://platform.openai.com/settings/organization/admin-keys),
-  creates a key and copies the `sk-admin-…` secret.
+  clicks **Create new admin key**, names it `llmspend`, sets
+  **Permissions → Read only**, and copies the `sk-admin-…` secret. llmspend
+  only reads, so Read only is enough.
 - **Anthropic** — an org admin opens
   [Settings → Admin keys](https://platform.claude.com/settings/admin-keys),
-  creates a key and copies the `sk-ant-admin01-…` secret. The Admin API needs
+  clicks **Create admin key**, names it, picks an expiration and copies the
+  `sk-ant-admin01-…` secret. Anthropic's docs say Console admin keys have no
+  selectable scopes: every key has full Admin API access, so there is no
+  read-only option to pick — the expiration is the lever. The Admin API needs
   an organization; individual accounts do not have it.
 
 ```bash
