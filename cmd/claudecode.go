@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/iamnikolie/llmspend/internal/anthropic"
 
 	"github.com/spf13/cobra"
 )
@@ -24,7 +28,8 @@ var claudeCodeCmd = &cobra.Command{
 	Long: "Daily Claude Code records from Anthropic's Claude Code Analytics API: sessions,\n" +
 		"commits, PRs, lines, tokens and Anthropic's estimated cost. It covers Claude Code\n" +
 		"used through the Console org (API keys, Team/Enterprise seats). Personal Pro/Max\n" +
-		"subscriptions are not in it. Data lags about an hour; one call per day in range.",
+		"subscriptions are not in it. Data lags about an hour; one call per day in range\n" +
+		"(six at a time).",
 	Example: `  llmspend claude-code                      # last 7 days per user
   llmspend claude-code --since 30d --by model
   llmspend cc --by day,user`,
@@ -71,11 +76,11 @@ var claudeCodeCmd = &cobra.Command{
 		rows := map[string]*agg{}
 		var order []string
 		err = eachOrg(ts, func(t target) error {
-			for d := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, time.UTC); d.Before(to); d = d.AddDate(0, 0, 1) {
-				recs, err := t.an.ClaudeCode(ctx, d)
-				if err != nil {
-					return fmt.Errorf("%s: %w", day(d), err)
-				}
+			byDay, err := claudeCodeDays(ctx, t, from, to)
+			if err != nil {
+				return err
+			}
+			for _, recs := range byDay {
 				for _, r := range recs {
 					base := map[string]any{"org": t.org.Name}
 					if dims["day"] {
@@ -172,11 +177,44 @@ var claudeCodeCmd = &cobra.Command{
 			return err
 		}
 		if len(out) == 0 {
-			fmt.Fprintln(stderr, "note: no Claude Code records; personal Pro/Max subscriptions are not reported by this API")
+			fmt.Fprintln(stderr, "note: no Claude Code records; Claude Code on a claude.ai subscription (Pro/Max, 5-hour/7-day limits) is not reported by this API")
 		}
 		footer("Total est %s (Anthropic's estimate, since %s)", money(total), day(from))
 		return nil
 	},
+}
+
+// ccWorkers bounds the parallel per-day calls; the API serves one day per
+// request and answers in about two seconds, so a 90-day range would not
+// fit the default timeout one call at a time.
+const ccWorkers = 6
+
+// claudeCodeDays fetches every UTC day in [from, to), in day order.
+func claudeCodeDays(ctx context.Context, t target, from, to time.Time) ([][]anthropic.ClaudeCodeRecord, error) {
+	var days []time.Time
+	for d := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, time.UTC); d.Before(to); d = d.AddDate(0, 0, 1) {
+		days = append(days, d)
+	}
+	out := make([][]anthropic.ClaudeCodeRecord, len(days))
+	errs := make([]error, len(days))
+	sem := make(chan struct{}, ccWorkers)
+	var wg sync.WaitGroup
+	for i, d := range days {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			out[i], errs[i] = t.an.ClaudeCode(ctx, d)
+		}()
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", day(days[i]), err)
+		}
+	}
+	return out, nil
 }
 
 func init() {

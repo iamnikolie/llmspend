@@ -50,8 +50,15 @@ func (t target) keys(ctx context.Context, ps []spend.Project) ([]spend.Key, erro
 	if err != nil {
 		return nil, err
 	}
+	users, err := t.an.Users(ctx)
+	if err != nil {
+		fmt.Fprintf(stderr, "! %s: key owners not named: %v\n", t.org.Name, err)
+	}
 	for i := range ks {
 		ks[i].Project = byID[ks[i].ProjectID]
+		if n := users[ks[i].Owner]; n != "" {
+			ks[i].Owner = n
+		}
 	}
 	return ks, nil
 }

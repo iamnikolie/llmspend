@@ -341,6 +341,28 @@ func (a *API) Keys(ctx context.Context) ([]spend.Key, error) {
 	return out, nil
 }
 
+// Users maps member ids to a display name (name, else email).
+func (a *API) Users(ctx context.Context) (map[string]string, error) {
+	type user struct {
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	}
+	us, err := listAll[user](ctx, a, "/organizations/users", nil)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(us))
+	for _, u := range us {
+		if u.Name != "" {
+			out[u.ID] = u.Name
+		} else {
+			out[u.ID] = u.Email
+		}
+	}
+	return out, nil
+}
+
 // ClaudeCodeRecord is one actor's Claude Code day.
 type ClaudeCodeRecord struct {
 	Date  time.Time `json:"date"`

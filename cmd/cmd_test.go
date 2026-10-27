@@ -380,7 +380,7 @@ func TestKeysAndOrgs(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("key_test_alpha1 listed %d times", n)
 	}
-	if r := rowWhere(rows, "name", "prod-service"); r == nil || r["project"] != "Production" || r["org_id"] != "00000000-0000-4000-8000-000000000001" {
+	if r := rowWhere(rows, "name", "prod-service"); r == nil || r["project"] != "Production" || r["owner"] != "Test Owner" || r["org_id"] != "00000000-0000-4000-8000-000000000001" {
 		t.Fatalf("prod-service = %v", r)
 	}
 	if rowWhere(rows, "name", "old-key") != nil {

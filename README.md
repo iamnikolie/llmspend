@@ -96,8 +96,10 @@ One **admin key per org**. Regular API keys cannot read usage or cost.
   only reads, and a Read only key covers every endpoint it calls (checked
   live: all 11 usage families, costs, spend limits and alerts, projects,
   project and admin keys, /v1/me).
-- **Anthropic** — two kinds of key work. Both need an organization account
-  (individual accounts have no Admin API):
+- **Anthropic** — two kinds of key work. Anthropic's docs say the Admin API
+  is unavailable for individual accounts; a Console org named "…'s
+  Individual Org" on the Team API plan did answer every endpoint in our live
+  check, so try the key before setting up a new organization:
   - **Admin key**, if your Console still has
     [Settings → Admin keys](https://platform.claude.com/settings/admin-keys):
     **Create admin key**, name, expiration, copy `sk-ant-admin01-…`.
@@ -175,12 +177,17 @@ What the provider APIs do not give, stated plainly:
 - **No prepaid credit balance** on either provider. `budget` shows the
   billing page link instead; `--alert-at` against an OpenAI spend limit is the
   closest warning the APIs allow.
-- **Anthropic's Admin API is for organization accounts only.** An individual
-  account gets a one-line error with the fix: set up an organization at
+- **Anthropic's Admin API is documented as organization accounts only.** If
+  the API refuses an account as individual, llmspend prints one line with the
+  fix: set up an organization at
   [platform.claude.com/settings/organization](https://platform.claude.com/settings/organization),
-  then create an admin key.
+  then create a key. (A Console "Individual Org" on the Team API plan was
+  accepted in our live check.)
 - **Anthropic spend limits are Enterprise-only.** Console orgs get cost, not
   limits.
+- **An empty table is a real empty.** Both providers return every day bucket
+  in the range, empty or not; a missing parameter or header would be an error,
+  not "No results". Widen `--since` (e.g. `--since 2026-05-01`) to see older use.
 - **Claude Code analytics covers Console-billed use only** (API keys,
   Team/Enterprise seats), never Pro/Max subscriptions.
 - **OpenAI spend limits and spend alerts are readable**, for the org and per

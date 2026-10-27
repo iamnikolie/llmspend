@@ -19,8 +19,9 @@ One admin key per provider org, stored in a profile:
   `sk-admin-…`. Read only covers every endpoint llmspend calls (checked live).
   Project keys
   (`sk-proj-…`) do not work.
-- Anthropic (organization accounts only; individual accounts have no Admin
-  API), either key works, both sent as `x-api-key`:
+- Anthropic, either key works, both sent as `x-api-key`. Docs say individual
+  accounts have no Admin API; a Console "Individual Org" on the Team API plan
+  was accepted in the live check, so try the key first:
   - Admin key: https://platform.claude.com/settings/admin-keys → Create admin
     key → name, expiration → `sk-ant-admin01-…`. Per Anthropic's docs, Console
     admin keys have no selectable scopes (full Admin API access).
@@ -128,15 +129,21 @@ exclusive; a bare date includes that day. All dates are UTC.
 ## Limits (what the provider APIs do not give)
 - **No prepaid credit balance** on either provider. `budget` links the billing
   page instead.
-- **Anthropic Admin API is for organization accounts only.** An individual
-  account gets a one-line error with the fix: set up an organization at
+- **Anthropic Admin API is documented as organization accounts only** (a
+  Console "Individual Org" on the Team API plan worked live). If the API
+  refuses an account as individual, the error says: set up an organization at
   platform.claude.com/settings/organization, then create an admin key or an
   unscoped personal key. Every Anthropic refusal (401/403/404) prints one line
   with the reason (rejected key, workspace-scoped key, role without access,
   individual account) and the fix.
 - **Anthropic spend limits are Enterprise-only**; Console orgs get cost only.
 - **Claude Code analytics covers Console-billed use only** (API keys,
-  Team/Enterprise seats) — never Pro/Max subscriptions.
+  Team/Enterprise seats) — never Pro/Max subscriptions. If Claude Code shows
+  5-hour / 7-day plan limits, it runs on a claude.ai subscription and
+  `claude-code` is empty by design; its spend is not in either API.
+- **Empty means empty.** The reports return every day bucket in range; "No
+  results" with exit 0 is real zero use, not a missing parameter (those are
+  errors). Widen `--since` to find older use.
 - **OpenAI spend limits and spend alerts are readable** (org and project) —
   that is what `budget` compares against.
 - Anthropic's cost report has no per-key split and leaves Priority Tier out.
