@@ -93,7 +93,7 @@ One **admin key per org**. Regular API keys cannot read usage or cost.
   [Settings → Organization → Admin keys](https://platform.openai.com/settings/organization/admin-keys),
   clicks **Create new admin key**, names it `llmspend`, sets
   **Permissions → Read only**, and copies the `sk-admin-…` secret. llmspend
-  only reads, so Read only is enough.
+  only reads; if an endpoint ever refuses a Read only key, the error names it.
 - **Anthropic** — an org admin opens
   [Settings → Admin keys](https://platform.claude.com/settings/admin-keys),
   clicks **Create admin key**, names it, picks an expiration and copies the

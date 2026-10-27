@@ -16,7 +16,8 @@ One admin key per provider org, stored in a profile:
 
 - OpenAI: org Owner opens https://platform.openai.com/settings/organization/admin-keys
   → Create new admin key → name `llmspend`, **Permissions → Read only** → copy
-  `sk-admin-…`. Read only is enough for every llmspend command. Project keys
+  `sk-admin-…`. llmspend only reads; an endpoint that refuses the key prints its
+  name and the 403 on stderr. Project keys
   (`sk-proj-…`) do not work.
 - Anthropic: org admin opens https://platform.claude.com/settings/admin-keys →
   Create admin key → name, expiration → copy `sk-ant-admin01-…`. Per Anthropic's

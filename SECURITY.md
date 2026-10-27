@@ -25,7 +25,7 @@ Some things are known and by design rather than vulnerabilities:
   at mode 0600 in a 0700 directory — the same posture as `~/.aws/credentials`.
   Anyone who can read your home directory can use them.
 - **Admin keys can do more than llmspend does.** Create the OpenAI key with
-  **Permissions → Read only**; that covers every llmspend command. An
+  **Permissions → Read only**; llmspend only reads. An
   Anthropic Console admin key cannot be limited — per Anthropic's docs it
   carries full Admin API access (Console keys have no scopes) — so give it an
   expiration. llmspend only ever sends `GET` — its HTTP client has no other
