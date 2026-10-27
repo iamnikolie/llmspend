@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/iamnikolie/llmspend/internal/anthropic"
@@ -23,6 +24,10 @@ var version = "dev"
 func buildVersion() string {
 	v := version
 	if info, ok := debug.ReadBuildInfo(); ok {
+		// go install …@v1.2.3 is not stamped but knows its module version.
+		if v == "dev" && info.Main.Version != "" && info.Main.Version != "(devel)" {
+			v = strings.TrimPrefix(info.Main.Version, "v")
+		}
 		for _, s := range info.Settings {
 			if s.Key == "vcs.revision" {
 				rev := s.Value
