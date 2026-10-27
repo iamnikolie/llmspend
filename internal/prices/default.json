@@ -1,7 +1,7 @@
 {
   "fetched_at": {
-    "anthropic": "2026-10-27T09:38:21.826258Z",
-    "openai": "2026-10-27T09:38:21.282793Z"
+    "anthropic": "2026-10-27T10:06:26.7278Z",
+    "openai": "2026-10-27T10:06:25.861167Z"
   },
   "sources": {
     "anthropic": "https://platform.claude.com/docs/en/about-claude/pricing.md",
@@ -486,6 +486,52 @@
       "input": 5,
       "cached_input": 0.5,
       "output": 25
+    },
+    {
+      "provider": "openai",
+      "model": "chat-latest",
+      "input": 5,
+      "cached_input": 0.5,
+      "output": 30
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.3-codex",
+      "input": 1.75,
+      "cached_input": 0.175,
+      "output": 14
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5-search-api",
+      "input": 1.25,
+      "cached_input": 0.125,
+      "output": 10
+    },
+    {
+      "provider": "openai",
+      "model": "text-embedding-3-small",
+      "input": 0.02,
+      "output": 0
+    },
+    {
+      "provider": "openai",
+      "model": "text-embedding-3-large",
+      "input": 0.13,
+      "output": 0
+    },
+    {
+      "provider": "openai",
+      "model": "text-embedding-ada-002",
+      "input": 0.1,
+      "output": 0
+    },
+    {
+      "provider": "openai",
+      "model": "omni-moderation-latest",
+      "input": 0,
+      "output": 0,
+      "note": "free"
     }
   ]
 }

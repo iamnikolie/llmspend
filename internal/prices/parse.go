@@ -108,7 +108,8 @@ var parenRe = regexp.MustCompile(`\s*\([^()]*(\([^()]*\)[^()]*)*\)`)
 // pricing page. Batch, Flex, Fast and Priority sections are skipped, as are
 // tables that split a model by modality or training (audio, image,
 // fine-tuning). Where a model is listed with short and long context rates,
-// the short-context rate is kept.
+// the short-context rate is kept. The specialized table ("Category | Model",
+// embeddings and moderation among them) is read too; "Free" is a price of 0.
 func ParseOpenAI(md string) []Price {
 	var out []Price
 	seen := map[string]bool{}
@@ -123,7 +124,7 @@ func ParseOpenAI(md string) []Price {
 		mi := col(t.header, "Model")
 		in := col(t.header, "Input", "Short context input")
 		outI := col(t.header, "Output", "Short context output")
-		if mi != 0 || in < 0 || outI < 0 {
+		if mi < 0 || mi > 1 || in < 0 || outI < 0 {
 			continue
 		}
 		cached := col(t.header, "Cached input", "Short context cached input")
@@ -147,8 +148,12 @@ func ParseOpenAI(md string) []Price {
 				Output:      dollars(cell(r, outI)),
 				Note:        note,
 			}
-			if p.Input == 0 && p.Output == 0 {
+			free := strings.EqualFold(strings.TrimSpace(cell(r, in)), "free")
+			if p.Input == 0 && p.Output == 0 && !free {
 				continue
+			}
+			if free {
+				p.Note = "free"
 			}
 			seen[name] = true
 			out = append(out, p)

@@ -5,8 +5,11 @@ package anthropic
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/iamnikolie/llmspend/internal/client"
@@ -30,6 +33,43 @@ func New(c *client.Client) *API {
 	}
 	c.Headers["anthropic-version"] = Version
 	return &API{C: c}
+}
+
+// Console URLs for the fixes.
+const (
+	orgSetupURL  = "platform.claude.com/settings/organization"
+	adminKeysURL = "platform.claude.com/settings/admin-keys"
+)
+
+// get is GetJSON with Anthropic's Admin API refusals turned into a reason
+// and a fix. The Admin API exists only for organization accounts; an
+// individual account, a workspace-scoped key or a regular API key is
+// refused with 401/403 (or 404 on the /organizations routes).
+func (a *API) get(ctx context.Context, path string, q url.Values, v any) (http.Header, error) {
+	h, err := a.C.GetJSON(ctx, path, q, v)
+	var e *client.APIError
+	if errors.As(err, &e) {
+		explain(e, a.C.Key)
+	}
+	return h, err
+}
+
+func explain(e *client.APIError, key string) {
+	individual := strings.Contains(strings.ToLower(e.Message), "individual")
+	switch {
+	case individual || e.Status == http.StatusForbidden || e.Status == http.StatusNotFound:
+		e.Reason = "the Admin API refused this account or key; it works only for organization accounts"
+		e.Fix = "set up an organization at " + orgSetupURL + ", then create an admin key at " + adminKeysURL
+		if e.Status == http.StatusNotFound && !individual {
+			e.Reason = "the Admin API has no such resource for this account; it works only for organization accounts"
+		}
+	case e.Status == http.StatusUnauthorized:
+		e.Reason = "the key was rejected"
+		if !strings.HasPrefix(key, "sk-ant-admin") {
+			e.Reason = "this is not an Admin API key"
+		}
+		e.Fix = "create an Admin API key (sk-ant-admin01-…) at " + adminKeysURL + " (organization accounts only; individual accounts: " + orgSetupURL + ") and save it with 'llmspend config add'"
+	}
 }
 
 type report[T any] struct {
@@ -108,13 +148,14 @@ func (a *API) Usage(ctx context.Context, from, to time.Time, width string, group
 	var out []spend.Usage
 	for {
 		var r report[usageResult]
-		if _, err := a.C.GetJSON(ctx, "/organizations/usage_report/messages", q, &r); err != nil {
+		if _, err := a.get(ctx, "/organizations/usage_report/messages", q, &r); err != nil {
 			return nil, err
 		}
 		for _, b := range r.Data {
 			for _, x := range b.Results {
 				write := x.CacheCreation.Ephemeral5m + x.CacheCreation.Ephemeral1h
 				out = append(out, spend.Usage{
+					Kind:         "messages",
 					Start:        b.StartingAt.UTC(),
 					Model:        str(x.Model),
 					APIKeyID:     str(x.APIKeyID),
@@ -147,7 +188,7 @@ func (a *API) Costs(ctx context.Context, from, to time.Time, groupBy []string) (
 	var out []spend.Cost
 	for {
 		var r report[costResult]
-		if _, err := a.C.GetJSON(ctx, "/organizations/cost_report", q, &r); err != nil {
+		if _, err := a.get(ctx, "/organizations/cost_report", q, &r); err != nil {
 			return nil, err
 		}
 		for _, b := range r.Data {
@@ -182,7 +223,7 @@ type Org struct {
 // Me reads /organizations/me.
 func (a *API) Me(ctx context.Context) (*Org, error) {
 	var o Org
-	if _, err := a.C.GetJSON(ctx, "/organizations/me", nil, &o); err != nil {
+	if _, err := a.get(ctx, "/organizations/me", nil, &o); err != nil {
 		return nil, err
 	}
 	return &o, nil
@@ -202,7 +243,7 @@ func listAll[T any](ctx context.Context, a *API, path string, q url.Values) ([]T
 	var out []T
 	for {
 		var p list[T]
-		if _, err := a.C.GetJSON(ctx, path, q, &p); err != nil {
+		if _, err := a.get(ctx, path, q, &p); err != nil {
 			return nil, err
 		}
 		out = append(out, p.Data...)
@@ -341,7 +382,7 @@ func (a *API) ClaudeCode(ctx context.Context, day time.Time) ([]ClaudeCodeRecord
 			HasMore  bool               `json:"has_more"`
 			NextPage string             `json:"next_page"`
 		}
-		if _, err := a.C.GetJSON(ctx, "/organizations/usage_report/claude_code", q, &p); err != nil {
+		if _, err := a.get(ctx, "/organizations/usage_report/claude_code", q, &p); err != nil {
 			return nil, err
 		}
 		out = append(out, p.Data...)

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -54,15 +55,64 @@ type bucket[T any] struct {
 	Results   []T   `json:"results"`
 }
 
-type completionsResult struct {
+// usageResult has every field any usage family returns; each family fills
+// its own subset.
+type usageResult struct {
 	InputTokens       int64   `json:"input_tokens"`
 	InputCachedTokens int64   `json:"input_cached_tokens"`
 	InputCacheWrite   int64   `json:"input_cache_write_tokens"`
 	OutputTokens      int64   `json:"output_tokens"`
 	NumModelRequests  int64   `json:"num_model_requests"`
+	Images            int64   `json:"images"`
+	Characters        int64   `json:"characters"`
+	Seconds           int64   `json:"seconds"`
+	NumSessions       int64   `json:"num_sessions"`
+	NumRequests       int64   `json:"num_requests"`
+	UsageBytes        int64   `json:"usage_bytes"`
 	ProjectID         *string `json:"project_id"`
 	APIKeyID          *string `json:"api_key_id"`
 	Model             *string `json:"model"`
+}
+
+// Kind is one usage family: /organization/usage/<Endpoint>.
+type Kind struct {
+	Name     string   // short name shown in the kind column and taken by --kind
+	Endpoint string   // path segment under /organization/usage/
+	GroupBy  []string // group_by fields the endpoint accepts (of model, api_key_id, project_id)
+	Unit     string   // "" for token kinds
+}
+
+// Kinds lists every usage family the Usage API documents.
+var Kinds = []Kind{
+	{"completions", "completions", []string{"model", "api_key_id", "project_id"}, ""},
+	{"embeddings", "embeddings", []string{"model", "api_key_id", "project_id"}, ""},
+	{"moderations", "moderations", []string{"model", "api_key_id", "project_id"}, ""},
+	{"decisions", "decisions", []string{"model", "api_key_id", "project_id"}, ""},
+	{"images", "images", []string{"model", "api_key_id", "project_id"}, "images"},
+	{"speech", "audio_speeches", []string{"model", "api_key_id", "project_id"}, "characters"},
+	{"transcription", "audio_transcriptions", []string{"model", "api_key_id", "project_id"}, "seconds"},
+	{"web_search", "web_search_calls", []string{"model", "api_key_id", "project_id"}, "calls"},
+	{"file_search", "file_search_calls", []string{"api_key_id", "project_id"}, "calls"},
+	{"code_interpreter", "code_interpreter_sessions", []string{"project_id"}, "sessions"},
+	{"vector_stores", "vector_stores", []string{"project_id"}, "bytes"},
+}
+
+func (k Kind) quantity(r usageResult) int64 {
+	switch k.Unit {
+	case "images":
+		return r.Images
+	case "characters":
+		return r.Characters
+	case "seconds":
+		return r.Seconds
+	case "calls":
+		return r.NumRequests
+	case "sessions":
+		return r.NumSessions
+	case "bytes":
+		return r.UsageBytes
+	}
+	return 0
 }
 
 type costsResult struct {
@@ -102,27 +152,33 @@ func maxBuckets(width string) string {
 	return "31"
 }
 
-// Usage reads /organization/usage/completions. groupBy uses OpenAI field
-// names (model, api_key_id, project_id).
-func (a *API) Usage(ctx context.Context, from, to time.Time, width string, groupBy []string) ([]spend.Usage, error) {
+// Usage reads one usage family. groupBy uses OpenAI field names (model,
+// api_key_id, project_id); fields the family does not accept are dropped.
+func (a *API) Usage(ctx context.Context, k Kind, from, to time.Time, width string, groupBy []string) ([]spend.Usage, error) {
 	if width == "" {
 		width = "1d"
 	}
 	q := timeRange(from, to)
 	q.Set("bucket_width", width)
 	q.Set("limit", maxBuckets(width))
+	noKey := false
 	for _, g := range groupBy {
-		q.Add("group_by", g)
+		if slices.Contains(k.GroupBy, g) {
+			q.Add("group_by", g)
+		} else if g == "api_key_id" {
+			noKey = true
+		}
 	}
 	var out []spend.Usage
 	for {
-		var p page[bucket[completionsResult]]
-		if err := a.get(ctx, "/organization/usage/completions", q, &p); err != nil {
+		var p page[bucket[usageResult]]
+		if err := a.get(ctx, "/organization/usage/"+k.Endpoint, q, &p); err != nil {
 			return nil, err
 		}
 		for _, b := range p.Data {
 			for _, r := range b.Results {
 				out = append(out, spend.Usage{
+					Kind:        k.Name,
 					Start:       time.Unix(b.StartTime, 0).UTC(),
 					Model:       str(r.Model),
 					APIKeyID:    str(r.APIKeyID),
@@ -132,6 +188,9 @@ func (a *API) Usage(ctx context.Context, from, to time.Time, width string, group
 					CachedInput: r.InputCachedTokens,
 					CacheWrite:  r.InputCacheWrite,
 					Output:      r.OutputTokens,
+					Quantity:    k.quantity(r),
+					Unit:        k.Unit,
+					NoKeySplit:  noKey,
 				})
 			}
 		}

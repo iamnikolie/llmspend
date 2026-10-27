@@ -8,7 +8,8 @@ What your OpenAI and Anthropic orgs used and spent, from the shell. One
 binary for both providers, read with admin keys, read-only.
 
 ```bash
-llmspend usage --since 7d --by model     # tokens per model, with an estimated cost
+llmspend usage --since 7d --by model     # every usage kind per model, with an estimated cost
+llmspend usage --kind embeddings --by key
 llmspend cost --month                    # billed cost, month to date, per org
 llmspend cost --month last --by model
 llmspend budget --alert-at 80            # spend limit vs month to date; exit 3 when close
@@ -35,11 +36,12 @@ the providers' admin APIs:
 
 | | OpenAI | Anthropic |
 | --- | --- | --- |
-| Token usage | [Usage API](https://platform.openai.com/docs/api-reference/usage) (completions) | [Usage report](https://platform.claude.com/docs/en/manage-claude/usage-cost-api) (Messages) |
+| Usage | [Usage API](https://platform.openai.com/docs/api-reference/usage), all 11 families | [Usage report](https://platform.claude.com/docs/en/manage-claude/usage-cost-api) (Messages) |
 | Billed cost | Costs API | Cost report |
-| Spend limit / alerts | org and project spend limits, spend alerts | Enterprise only, not for Console orgs |
+| Spend limit / alerts | org and project spend limits and spend alerts | Enterprise only, not for Console orgs |
 | Keys → projects | projects, project keys, admin keys | API keys, workspaces |
-| Claude Code | — | [Claude Code Analytics API](https://platform.claude.com/docs/en/manage-claude/claude-code-analytics-api) |
+| Claude Code | — | [Claude Code Analytics API](https://platform.claude.com/docs/en/manage-claude/claude-code-analytics-api), Console-billed use only |
+| Who can read it | any org, admin key | organization accounts only, admin key |
 | Prepaid credit balance | not in the API | not in the API |
 
 `llmspend` reads them, normalizes the two shapes into one set of rows, and
@@ -111,7 +113,7 @@ personal and work orgs never mix. `OPENAI_ADMIN_KEY` and
 
 | Command | What it shows |
 | --- | --- |
-| `usage [--since 7d] [--by model,key,project,day] [--bucket 1d\|1h]` | Input / cached / cache-write / output tokens, OpenAI request counts, `est_usd` from the price table |
+| `usage [--since 7d] [--by model,key,project,day] [--kind K] [--bucket 1d\|1h]` | Every usage kind with a `kind` column: tokens (input / cached / cache-write / output, OpenAI request counts, `est_usd`) or a quantity and unit (images, characters, seconds, calls, sessions, bytes) |
 | `cost [--month current\|last\|YYYY-MM] [--since 7d] [--by day,project,model,line,key]` | Billed USD; month to date by default, total under the table |
 | `budget [--projects] [--alert-at N]` | Month-to-date cost next to spend limits and alerts; exit 3 when a limit is N% used |
 | `keys [--all]` | Every key the admin API lists, with project/workspace, org id, redacted hint, owner, last use |
@@ -128,6 +130,16 @@ and the others still answer.
 `--json` prints normalized rows; `--format csv|tsv|table`, `--fields a,b`.
 Times are UTC; `--since` takes `7d`, `24h`, `2w`, `YYYY-MM-DD` or RFC 3339.
 
+### Usage kinds
+
+OpenAI reports usage per family; `usage` reads all of them and tags each row:
+`completions` (Chat Completions and Responses), `embeddings`, `moderations`,
+`decisions`, `images`, `speech`, `transcription`, `web_search`,
+`file_search`, `code_interpreter`, `vector_stores`. Anthropic's report is one
+kind, `messages`. `--kind embeddings,completions` narrows the read. Token
+kinds are priced from the local table; the others show a quantity and unit
+and leave the money to `cost`.
+
 ### Estimates vs bills
 
 `usage` prices tokens with the local table at standard rates, so it can split
@@ -142,12 +154,22 @@ leaves the table as it was.
 
 ### Limits
 
-- Neither provider exposes the prepaid credit balance. `budget` shows the
-  billing page link instead; `--alert-at` against a spend limit is the closest
-  warning the APIs allow.
+What the provider APIs do not give, stated plainly:
+
+- **No prepaid credit balance** on either provider. `budget` shows the
+  billing page link instead; `--alert-at` against an OpenAI spend limit is the
+  closest warning the APIs allow.
+- **Anthropic's Admin API is for organization accounts only.** An individual
+  account gets a one-line error with the fix: set up an organization at
+  [platform.claude.com/settings/organization](https://platform.claude.com/settings/organization),
+  then create an admin key.
+- **Anthropic spend limits are Enterprise-only.** Console orgs get cost, not
+  limits.
+- **Claude Code analytics covers Console-billed use only** (API keys,
+  Team/Enterprise seats), never Pro/Max subscriptions.
+- **OpenAI spend limits and spend alerts are readable**, for the org and per
+  project; `budget` compares month-to-date cost against them.
 - Anthropic's cost report has no per-key split and leaves Priority Tier out.
-- OpenAI `usage` reads the completions usage endpoint; embeddings, images and
-  audio show up in `cost`.
 - Usage data lags about five minutes; Claude Code analytics about an hour.
 
 ## Development

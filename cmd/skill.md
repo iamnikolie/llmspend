@@ -39,14 +39,23 @@ llmspend orgs                      # checks every key, shows the org it belongs 
   on stderr and the others still print; exit 1 only when all failed.
 
 ## Commands
-- `llmspend usage [--since 7d] [--until D] [--by model|key|project|day] [--bucket 1d|1h]`
-  — tokens from OpenAI's completions usage and Anthropic's Messages usage report.
-  `--by` combines (`--by project,model`); default `model`. Columns: requests
-  (OpenAI only), input (all input incl. cached and cache writes), cached,
-  cache_write, output, est_usd. `est_usd` = local price table × tokens at
-  standard rates (batch/priority discounts ignored); stderr names models with
-  no price. Key and project ids resolve to names (Anthropic default workspace =
-  `Default`, key-less console use = `(console / no key)`).
+- `llmspend usage [--since 7d] [--until D] [--by model|key|project|day] [--kind K] [--bucket 1d|1h]`
+  — usage of every kind. OpenAI: all Usage API families — `completions`
+  (Chat Completions, Responses), `embeddings`, `moderations`, `decisions`,
+  `images`, `speech`, `transcription`, `web_search`, `file_search`,
+  `code_interpreter`, `vector_stores`. Anthropic: `messages`. Every row has a
+  `kind`; `--kind embeddings,completions` narrows (default: all). `--by`
+  combines (`--by project,model`); default `model`. Token kinds show requests
+  (OpenAI), input (all input incl. cached and cache writes), cached,
+  cache_write, output, est_usd. Other kinds show `quantity` + `unit` (images,
+  characters, seconds, calls, sessions, bytes — vector-store bytes are the peak,
+  not a sum) and no estimate; their money is in `cost`. `est_usd` = local
+  price table × tokens at standard rates (batch/priority discounts ignored);
+  stderr names token models with no price. Key and project ids resolve to names
+  (Anthropic default workspace = `Default`, key-less console use =
+  `(console / no key)`, kinds the API cannot split by key =
+  `(not split by key)`). A family the org cannot read is a stderr note; the
+  others still print.
 - `llmspend cost [--month current|last|YYYY-MM] [--since 7d --until D] [--by day|project|model|line|key]`
   — billed USD from the cost reports. Default: this month to date, one row per
   org, total under the table. `--by model` reads OpenAI line items
@@ -55,10 +64,10 @@ llmspend orgs                      # checks every key, shows the org it belongs 
   line item. Anthropic has no per-key cost (→ use `usage --by key`) and leaves
   Priority Tier out of the cost report.
 - `llmspend budget [--projects] [--alert-at 80]` (aliases `balance`, `limits`) —
-  month-to-date cost vs the hard spend limit and spend alerts. OpenAI: org limit
-  and alerts; `--projects` adds per-project limits. Anthropic Console orgs: cost
-  only (spend-limit API is Enterprise-only). Neither API returns the prepaid
-  credit balance; the `note` column links the billing page. `--alert-at N`
+  month-to-date cost vs the hard spend limit and spend alerts. OpenAI: org
+  spend limit and spend alerts; `--projects` adds per-project spend limits.
+  Anthropic Console orgs: cost only. No prepaid credit balance on either
+  provider; the `note` column links the billing page. `--alert-at N`
   exits 3 with a stderr line when any limit is ≥ N% used (cron-friendly).
 - `llmspend keys [--all]` — every key the admin API lists: provider, org, kind
   (project / service_account / admin / workspace), project or workspace, name,
@@ -73,8 +82,8 @@ llmspend orgs                      # checks every key, shows the org it belongs 
 - `llmspend claude-code [--since 7d] [--by user|model|day|terminal]` (alias `cc`)
   — Anthropic Claude Code Analytics: sessions, commits, PRs, lines, tokens and
   Anthropic's estimated cost. One call per day. Covers Claude Code billed to the
-  Console org (API keys, Team/Enterprise seats); personal Pro/Max plans are not
-  in it. Data lags ~1h.
+  Console org only (API keys, Team/Enterprise seats), never Pro/Max
+  subscriptions. Data lags ~1h.
 - `llmspend prices [model-substring]` (alias `models`) — local price table, USD
   per 1M tokens: input, cached_input, cache_write (OpenAI 30m / Anthropic 5m),
   cache_write_1h (Anthropic), output, note. Built-in snapshot until refreshed.
@@ -101,12 +110,26 @@ exclusive; a bare date includes that day. All dates are UTC.
   prepaid balance itself open the billing URL in the note.
 - Stale estimates → `llmspend prices refresh`, then rerun `usage`.
 
+## Limits (what the provider APIs do not give)
+- **No prepaid credit balance** on either provider. `budget` links the billing
+  page instead.
+- **Anthropic Admin API is for organization accounts only.** An individual
+  account gets a one-line error with the fix: set up an organization at
+  platform.claude.com/settings/organization, then create an admin key.
+- **Anthropic spend limits are Enterprise-only**; Console orgs get cost only.
+- **Claude Code analytics covers Console-billed use only** (API keys,
+  Team/Enterprise seats) — never Pro/Max subscriptions.
+- **OpenAI spend limits and spend alerts are readable** (org and project) —
+  that is what `budget` compares against.
+- Anthropic's cost report has no per-key split and leaves Priority Tier out.
+
 ## Gotchas
 - Usage and cost data lag ~5 minutes (Claude Code ~1 hour).
-- `usage` est_usd is an estimate; `cost` is what the provider bills. They differ
-  by discounts, batch, long-context and tool fees.
-- OpenAI `usage` covers the completions endpoint (Chat Completions, Responses);
-  embeddings, images and audio appear in `cost` only.
+- `usage` est_usd is an estimate for token kinds; `cost` is what the provider
+  bills, every kind included. They differ by discounts, batch, long-context
+  and tool fees.
+- An embeddings-heavy app shows up under `--kind embeddings`; the per-key
+  split is `llmspend usage --kind embeddings --by key`.
 - Admin keys are powerful (Anthropic Console admin keys carry full admin access;
   OpenAI admin keys manage the org). llmspend only reads, but keep the key in
   this config only and revoke it in the console when done.

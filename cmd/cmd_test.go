@@ -62,6 +62,11 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			file = "openai/" + strings.ReplaceAll(p, "/", "_") + ".json"
 		}
 	case strings.HasPrefix(r.URL.Path, "/anthropic/v1/"):
+		if r.Header.Get("x-api-key") == "sk-ant-admin01-individual-0000" {
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte(`{"type":"error","error":{"type":"permission_error","message":"The Admin API is unavailable for individual accounts."}}`))
+			return
+		}
 		if r.Header.Get("x-api-key") != testAnthropicKey || r.Header.Get("anthropic-version") == "" {
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte(`{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}`))
@@ -216,6 +221,9 @@ func TestUsageByModelBothProviders(t *testing.T) {
 	if !strings.Contains(errOut, "openai/made-up-model-x") {
 		t.Fatalf("unpriced model not reported: %q", errOut)
 	}
+	if strings.Contains(errOut, "usage not read") {
+		t.Fatalf("a usage family failed: %s", errOut)
+	}
 	// Always grouped by model at the provider, from the snapped 7-day start.
 	q := f.requests("/usage/completions")
 	if len(q) != 2 || !strings.Contains(q[0], "group_by=model") || !strings.Contains(q[0], "start_time=1792540800") {
@@ -251,7 +259,7 @@ func TestUsageMarkdownHasTotal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(out, "| provider | org | model |") || !strings.Contains(out, "Total: 3500000 input / 150000 output tokens, est $9.30") {
+	if !strings.HasPrefix(out, "| provider | org | kind | model |") || !strings.Contains(out, "| anthropic | an | messages | claude-sonnet-4-5-20250929 |") || !strings.Contains(out, "Total: 3500000 input / 150000 output tokens, est $9.30") {
 		t.Fatalf("markdown:\n%s", out)
 	}
 	if strings.Contains(out, "openai") {
@@ -511,5 +519,98 @@ func TestTimeParsing(t *testing.T) {
 	}
 	if _, err := parseSince("yesterday"); err == nil {
 		t.Fatal("want error")
+	}
+}
+
+func TestUsageEveryOpenAIKind(t *testing.T) {
+	f := setup(t)
+	out, errOut, err := run(t, "usage", "-p", "openai", "--json")
+	if err != nil {
+		t.Fatalf("err=%v stderr=%s", err, errOut)
+	}
+	rows := decode(t, out)
+	for _, ep := range []string{"completions", "embeddings", "moderations", "decisions", "images", "audio_speeches",
+		"audio_transcriptions", "web_search_calls", "file_search_calls", "code_interpreter_sessions", "vector_stores"} {
+		if len(f.requests("/organization/usage/"+ep+"?")) == 0 {
+			t.Errorf("%s not read", ep)
+		}
+	}
+	emb := rowWhere(rows, "kind", "embeddings", "model", "text-embedding-3-small")
+	near(t, "embeddings input", emb["input"], 50_000_000)
+	near(t, "embeddings est", emb["est_usd"], 1.00)
+	near(t, "decisions est", rowWhere(rows, "kind", "decisions")["est_usd"], 0.10)
+	near(t, "free moderation", rowWhere(rows, "kind", "moderations")["est_usd"], 0)
+	vs := rowWhere(rows, "kind", "vector_stores")
+	if vs["unit"] != "bytes" {
+		t.Fatalf("vector stores = %v", vs)
+	}
+	near(t, "stored bytes are a peak, not a sum", vs["quantity"], 2097152)
+	near(t, "transcription seconds", rowWhere(rows, "kind", "transcription")["quantity"], 95)
+	if _, ok := rowWhere(rows, "kind", "images")["est_usd"]; ok {
+		t.Fatal("non-token kinds must not carry a token estimate")
+	}
+	if strings.Contains(errOut, "omni-moderation") || strings.Contains(errOut, "gpt-image") {
+		t.Fatalf("free or non-token models reported as unpriced: %s", errOut)
+	}
+	ci := f.requests("/usage/code_interpreter_sessions")[0]
+	if strings.Contains(ci, "group_by=model") {
+		t.Fatalf("unsupported group_by sent: %s", ci)
+	}
+}
+
+func TestUsageKindFilterAndKeySplit(t *testing.T) {
+	f := setup(t)
+	out, _, err := run(t, "usage", "--kind", "embeddings", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := decode(t, out)
+	if len(rows) != 1 || rows[0]["kind"] != "embeddings" {
+		t.Fatalf("rows = %v", rows)
+	}
+	if len(f.requests("/usage/completions")) != 0 || len(f.requests("/usage_report/messages")) != 0 {
+		t.Fatal("--kind embeddings read other families")
+	}
+	out, _, err = run(t, "usage", "-p", "openai", "--kind", "code_interpreter,file_search", "--by", "key", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows = decode(t, out)
+	if r := rowWhere(rows, "kind", "code_interpreter"); r == nil || r["key"] != "(not split by key)" {
+		t.Fatalf("code interpreter row = %v", r)
+	}
+	if r := rowWhere(rows, "kind", "file_search"); r == nil || r["key"] != "alpha-backend" {
+		t.Fatalf("file search row = %v", r)
+	}
+	if _, _, err := run(t, "usage", "--kind", "telepathy"); err == nil {
+		t.Fatal("unknown kind accepted")
+	}
+}
+
+func TestAnthropicOrgOnlyErrors(t *testing.T) {
+	setup(t)
+	c, _ := config.Load("default")
+	c.Orgs[1].AdminKey = "sk-ant-admin01-individual-0000"
+	if _, err := config.Save("default", c); err != nil {
+		t.Fatal(err)
+	}
+	_, errOut, err := run(t, "usage", "-p", "anthropic")
+	if err == nil {
+		t.Fatal("want failure")
+	}
+	line := strings.TrimSpace(errOut)
+	if strings.Count(line, "\n") != 0 || !strings.Contains(line, "organization accounts") ||
+		!strings.Contains(line, "fix: set up an organization at platform.claude.com/settings/organization") ||
+		!strings.Contains(line, "individual accounts") {
+		t.Fatalf("stderr: %q", errOut)
+	}
+
+	c.Orgs[1].AdminKey = "sk-ant-api03-regular-key-0000"
+	if _, err := config.Save("default", c); err != nil {
+		t.Fatal(err)
+	}
+	_, errOut, _ = run(t, "cost", "-p", "anthropic")
+	if !strings.Contains(errOut, "this is not an Admin API key") || !strings.Contains(errOut, "platform.claude.com/settings/admin-keys") {
+		t.Fatalf("stderr: %q", errOut)
 	}
 }

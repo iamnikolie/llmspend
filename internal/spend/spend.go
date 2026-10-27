@@ -4,11 +4,14 @@ package spend
 
 import "time"
 
-// Usage is token usage for one time bucket and one group. ProjectID is an
-// OpenAI project or an Anthropic workspace ("" = the default workspace or
-// not grouped). Input counts every input token, cached and cache writes
-// included, so Input means the same thing for both providers.
+// Usage is usage of one kind for one time bucket and one group. ProjectID
+// is an OpenAI project or an Anthropic workspace ("" = the default workspace
+// or not grouped). Input counts every input token, cached and cache writes
+// included, so Input means the same thing for both providers. Kinds billed
+// by something other than tokens (images, audio seconds, tool calls, stored
+// bytes) carry it in Quantity, named by Unit.
 type Usage struct {
+	Kind         string // "completions", "embeddings", … ; Anthropic: "messages"
 	Start        time.Time
 	Model        string
 	APIKeyID     string
@@ -20,6 +23,11 @@ type Usage struct {
 	CacheWrite1h int64 // Anthropic: the 1-hour subset of CacheWrite
 	Output       int64
 	WebSearches  int64
+	Quantity     int64
+	Unit         string // "images", "characters", "seconds", "calls", "sessions", "bytes"
+	// NoKeySplit marks kinds whose endpoint cannot group by API key
+	// (code interpreter sessions, vector stores).
+	NoKeySplit bool
 }
 
 // Cost is billed money for one day and one group, in USD.

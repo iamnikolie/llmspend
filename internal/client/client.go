@@ -39,12 +39,17 @@ type Client struct {
 	HTTP       *http.Client
 }
 
-// APIError is a non-2xx answer.
+// APIError is a non-2xx answer. It prints as one line: what went wrong,
+// the provider's own words, and the fix.
 type APIError struct {
 	Provider string
 	Status   int
 	Message  string
 	Type     string
+	// Reason and Fix override the generic text; provider packages set them
+	// for cases they can name (an Anthropic individual account, say).
+	Reason string
+	Fix    string
 }
 
 func (e *APIError) Error() string {
@@ -52,31 +57,41 @@ func (e *APIError) Error() string {
 	if msg == "" {
 		msg = http.StatusText(e.Status)
 	}
-	s := fmt.Sprintf("%s: HTTP %d: %s", e.Provider, e.Status, msg)
+	detail := fmt.Sprintf("HTTP %d: %s", e.Status, msg)
 	if e.Type != "" {
-		s += " [" + e.Type + "]"
+		detail += " [" + e.Type + "]"
 	}
-	if hint := e.hint(); hint != "" {
-		s += "\n" + hint
+	reason, fix := e.Reason, e.Fix
+	if reason == "" && fix == "" {
+		reason, fix = e.generic()
+	}
+	s := e.Provider + ": "
+	if reason != "" {
+		s += reason + " (" + detail + ")"
+	} else {
+		s += detail
+	}
+	if fix != "" {
+		s += " — fix: " + fix
 	}
 	return s
 }
 
-func (e *APIError) hint() string {
+func (e *APIError) generic() (reason, fix string) {
 	switch e.Status {
 	case http.StatusUnauthorized:
-		return "the admin key is missing or invalid; check it with 'llmspend config show' and 'llmspend orgs'"
+		return "the admin key was rejected", "check it with 'llmspend config show' and 'llmspend orgs'; replace it with 'llmspend config add'"
 	case http.StatusForbidden:
 		if e.Provider == "openai" {
-			return "this needs an OpenAI admin key (sk-admin-…), not a project key"
+			return "this key may not read the org", "use an OpenAI admin key (sk-admin-…) from platform.openai.com/settings/organization/admin-keys"
 		}
-		return "this needs an Anthropic Admin API key (sk-ant-admin…); individual accounts have no Admin API"
+		return "this key may not read the org", "use an Admin API key (sk-ant-admin01-…)"
 	case http.StatusNotFound:
-		return "the endpoint or object does not exist for this org"
+		return "not available for this org", ""
 	case http.StatusTooManyRequests:
-		return "rate limited; retry shortly"
+		return "rate limited", "retry in a minute"
 	}
-	return ""
+	return "", ""
 }
 
 // ParseError builds an APIError from an error body. Both providers answer

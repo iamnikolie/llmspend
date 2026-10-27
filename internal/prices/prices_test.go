@@ -44,6 +44,16 @@ func TestParseOpenAI(t *testing.T) {
 	if !ok || p.Input != 5 || p.Note == "" {
 		t.Fatalf("gpt-5.5 = %+v", p)
 	}
+	p, ok = find(ps, "text-embedding-3-small")
+	if !ok || p.Input != 0.02 || p.Output != 0 {
+		t.Fatalf("text-embedding-3-small = %+v", p)
+	}
+	if p, ok = find(ps, "omni-moderation-latest"); !ok || p.Input != 0 || p.Note != "free" {
+		t.Fatalf("moderation = %+v", p)
+	}
+	if p, ok = find(ps, "gpt-5.3-codex"); !ok || p.Input != 1.75 {
+		t.Fatalf("codex should keep the standard rate, not fast: %+v", p)
+	}
 	for _, p := range ps {
 		if p.Provider != "openai" || p.Model == "" {
 			t.Fatalf("bad row %+v", p)
