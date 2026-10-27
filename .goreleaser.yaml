@@ -1,0 +1,72 @@
+version: 2
+
+project_name: llmspend
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: llmspend
+    binary: llmspend
+    main: .
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/iamnikolie/llmspend/cmd.version={{ .Version }}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - LICENSE
+      - SECURITY.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+
+release:
+  draft: false
+  prerelease: auto
+
+# Formula in iamnikolie/homebrew-tap, rewritten on every tag. Needs the
+# HOMEBREW_TAP_TOKEN secret (fine-grained, contents:write on homebrew-tap only);
+# without it the release still ships and the formula upload is skipped.
+brews:
+  - name: llmspend
+    repository:
+      owner: iamnikolie
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    commit_author:
+      name: Mykola Klitovchenko
+      email: mykola.klitovchenko@gmail.com
+    commit_msg_template: "{{ .ProjectName }} {{ .Version }}"
+    homepage: https://github.com/iamnikolie/llmspend
+    description: "Read-only OpenAI and Anthropic usage, cost, budgets and keys"
+    license: MIT
+    skip_upload: "{{ if .Env.HOMEBREW_TAP_TOKEN }}auto{{ else }}true{{ end }}"
+    install: |
+      bin.install "llmspend"
+    test: |
+      assert_match(/^llmspend version /, shell_output("#{bin}/llmspend version"))

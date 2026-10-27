@@ -1,0 +1,21 @@
+{
+  "data": [
+    {
+      "starting_at": "2025-10-25T00:00:00Z",
+      "ending_at": "2025-10-26T00:00:00Z",
+      "results": [
+        {"api_key_id": "apikey_test_one", "workspace_id": null, "model": "claude-sonnet-4-5-20250929",
+         "uncached_input_tokens": 1000000, "cache_read_input_tokens": 1000000,
+         "cache_creation": {"ephemeral_5m_input_tokens": 1000000, "ephemeral_1h_input_tokens": 0},
+         "output_tokens": 100000, "server_tool_use": {"web_search_requests": 0}},
+        {"api_key_id": "apikey_test_two", "workspace_id": "wrkspc_test_prod", "model": "claude-haiku-4-5-20251001",
+         "uncached_input_tokens": 500000, "cache_read_input_tokens": 0,
+         "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 0},
+         "output_tokens": 50000, "server_tool_use": {"web_search_requests": 2}}
+      ]
+    },
+    {"starting_at": "2025-10-26T00:00:00Z", "ending_at": "2025-10-27T00:00:00Z", "results": []}
+  ],
+  "has_more": false,
+  "next_page": null
+}

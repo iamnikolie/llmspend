@@ -1,0 +1,8 @@
+{"data": [
+  {"type": "api_key", "id": "apikey_test_one", "name": "local-dev", "partial_key_hint": "sk-ant-api03-Tst...AAAA", "status": "active", "created_at": "2025-02-01T00:00:00Z", "expires_at": null,
+   "created_by": {"id": "user_test_a", "type": "user"}, "scope": {"type": "workspace", "workspace_id": "wrkspc_test_default"}},
+  {"type": "api_key", "id": "apikey_test_two", "name": "prod-service", "partial_key_hint": "sk-ant-api03-Tst...BBBB", "status": "active", "created_at": "2025-03-01T00:00:00Z", "expires_at": null,
+   "created_by": {"id": "user_test_a", "type": "user"}, "scope": {"type": "workspace", "workspace_id": "wrkspc_test_prod"}},
+  {"type": "api_key", "id": "apikey_test_old", "name": "old-key", "partial_key_hint": "sk-ant-api03-Tst...CCCC", "status": "archived", "created_at": "2024-03-01T00:00:00Z", "expires_at": null,
+   "created_by": null, "scope": {"type": "workspace", "workspace_id": "wrkspc_test_prod"}}
+], "first_id": "apikey_test_one", "last_id": "apikey_test_old", "has_more": false}

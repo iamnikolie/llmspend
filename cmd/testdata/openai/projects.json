@@ -1,0 +1,10 @@
+{
+  "object": "list",
+  "data": [
+    {"id": "proj_test_alpha", "object": "organization.project", "name": "Alpha App", "created_at": 1730000000, "archived_at": null, "status": "active"},
+    {"id": "proj_test_beta", "object": "organization.project", "name": "Beta Tools", "created_at": 1730100000, "archived_at": null, "status": "active"}
+  ],
+  "first_id": "proj_test_alpha",
+  "last_id": "proj_test_beta",
+  "has_more": false
+}

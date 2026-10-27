@@ -1,0 +1,10 @@
+{
+  "object": "list",
+  "data": [
+    {"object": "organization.project.api_key", "redacted_value": "sk-svca****bbbb", "name": "beta-worker", "created_at": 1730100500, "last_used_at": null, "id": "key_test_beta1", "owner_project_access": "active",
+     "owner": {"type": "service_account", "service_account": {"id": "svc_test_1", "name": "beta-sa", "role": "member", "created_at": 1730100000}}}
+  ],
+  "first_id": "key_test_beta1",
+  "last_id": "key_test_beta1",
+  "has_more": false
+}

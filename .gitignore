@@ -1,0 +1,10 @@
+# Build artifacts
+/llmspend
+/dist/
+*.exe
+
+# Local tooling state
+.claude/settings.local.json
+
+# macOS
+.DS_Store

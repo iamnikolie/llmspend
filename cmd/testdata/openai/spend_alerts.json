@@ -1,0 +1,1 @@
+{"object": "list", "data": [{"id": "alert_test_1", "object": "organization.spend_alert", "threshold_amount": 500, "currency": "USD", "interval": "month", "notification_channel": {"type": "email", "recipients": ["alerts@example.com"]}}], "first_id": "alert_test_1", "last_id": "alert_test_1", "has_more": false}

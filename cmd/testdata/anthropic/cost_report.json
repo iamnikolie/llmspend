@@ -1,0 +1,15 @@
+{
+  "data": [
+    {
+      "starting_at": "2025-10-25T00:00:00Z",
+      "ending_at": "2025-10-26T00:00:00Z",
+      "results": [
+        {"amount": "705.00", "currency": "USD", "description": "Claude Sonnet 4.5 Usage - Input Tokens", "model": "claude-sonnet-4-5-20250929", "cost_type": "tokens", "token_type": "uncached_input_tokens", "workspace_id": null, "service_tier": "standard", "context_window": "0-200k"},
+        {"amount": "75.00", "currency": "USD", "description": "Claude Haiku 4.5 Usage - Output Tokens", "model": "claude-haiku-4-5-20251001", "cost_type": "tokens", "token_type": "output_tokens", "workspace_id": "wrkspc_test_prod", "service_tier": "standard", "context_window": "0-200k"},
+        {"amount": "2.00", "currency": "USD", "description": "Web Search", "model": null, "cost_type": "web_search", "token_type": null, "workspace_id": "wrkspc_test_prod", "service_tier": null, "context_window": null}
+      ]
+    }
+  ],
+  "has_more": false,
+  "next_page": null
+}

@@ -1,0 +1,14 @@
+version: "2"
+
+linters:
+  default: standard
+  settings:
+    errcheck:
+      # Writes to stdout/stderr and closing a fully read response body have
+      # no error worth handling in a CLI.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (io.Closer).Close
+        - (net/http.ResponseWriter).Write

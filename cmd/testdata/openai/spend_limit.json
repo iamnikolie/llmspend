@@ -1,0 +1,1 @@
+{"object": "organization.spend_limit", "threshold_amount": 1000, "currency": "USD", "interval": "month", "enforcement": {"status": "enforcing"}}

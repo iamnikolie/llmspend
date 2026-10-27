@@ -1,0 +1,11 @@
+{"data": [
+  {"actor": {"type": "user_actor", "email_address": "dev@example.com"},
+   "core_metrics": {"commits_by_claude_code": 3, "lines_of_code": {"added": 120, "removed": 40}, "num_sessions": 4, "pull_requests_by_claude_code": 1},
+   "customer_type": "api", "date": "2026-10-26T00:00:00Z", "is_remote": false,
+   "model_breakdown": [
+     {"estimated_cost": {"amount": 150, "currency": "USD"}, "model": "claude-sonnet-4-5-20250929", "tokens": {"cache_creation": 1000, "cache_read": 5000, "input": 20000, "output": 4000}},
+     {"estimated_cost": {"amount": 25, "currency": "USD"}, "model": "claude-haiku-4-5-20251001", "tokens": {"cache_creation": 0, "cache_read": 0, "input": 9000, "output": 1000}}
+   ],
+   "organization_id": "00000000-0000-4000-8000-000000000001", "terminal_type": "iTerm.app",
+   "tool_actions": {"edit_tool": {"accepted": 10, "rejected": 1}}}
+], "has_more": false, "next_page": null}
