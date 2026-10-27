@@ -20,6 +20,9 @@ import (
 const Version = "2023-06-01"
 
 // API is one Anthropic org.
+//
+// No anthropic-workspace-id header is sent unless the org sets workspace_id:
+// the Admin API is organization-wide.
 type API struct {
 	C *client.Client
 }
@@ -39,12 +42,13 @@ func New(c *client.Client) *API {
 const (
 	orgSetupURL  = "platform.claude.com/settings/organization"
 	adminKeysURL = "platform.claude.com/settings/admin-keys"
+	keysURL      = "platform.claude.com/settings/keys"
 )
 
 // get is GetJSON with Anthropic's Admin API refusals turned into a reason
-// and a fix. The Admin API exists only for organization accounts; an
-// individual account, a workspace-scoped key or a regular API key is
-// refused with 401/403 (or 404 on the /organizations routes).
+// and a fix. The Admin API exists only for organization accounts and takes
+// an Admin API key (sk-ant-admin…) or a personal / service-account key that
+// is not scoped to one workspace, both in x-api-key.
 func (a *API) get(ctx context.Context, path string, q url.Values, v any) (http.Header, error) {
 	h, err := a.C.GetJSON(ctx, path, q, v)
 	var e *client.APIError
@@ -54,21 +58,31 @@ func (a *API) get(ctx context.Context, path string, q url.Values, v any) (http.H
 	return h, err
 }
 
+const keyFix = "use an admin key from " + adminKeysURL + " or a personal key from " + keysURL +
+	" with Linked account = you and no workspace scope (your role must allow Admin API access)"
+
 func explain(e *client.APIError, key string) {
-	individual := strings.Contains(strings.ToLower(e.Message), "individual")
+	msg := strings.ToLower(e.Message)
+	personal := strings.HasPrefix(key, "sk-ant-api")
 	switch {
-	case individual || e.Status == http.StatusForbidden || e.Status == http.StatusNotFound:
-		e.Reason = "the Admin API refused this account or key; it works only for organization accounts"
-		e.Fix = "set up an organization at " + orgSetupURL + ", then create an admin key at " + adminKeysURL
-		if e.Status == http.StatusNotFound && !individual {
-			e.Reason = "the Admin API has no such resource for this account; it works only for organization accounts"
-		}
+	case strings.Contains(msg, "individual"):
+		e.Reason = "the Admin API is for organization accounts only"
+		e.Fix = "set up an organization at " + orgSetupURL + ", then " + keyFix
+	case e.Status == http.StatusBadRequest && strings.Contains(msg, "anthropic-workspace-id"):
+		e.Reason = "the API wants a workspace for this key"
+		e.Fix = "save the org again with --workspace-id wrkspc_… ('llmspend config add <name> --provider anthropic --workspace-id …')"
 	case e.Status == http.StatusUnauthorized:
 		e.Reason = "the key was rejected"
-		if !strings.HasPrefix(key, "sk-ant-admin") {
-			e.Reason = "this is not an Admin API key"
+		e.Fix = keyFix
+	case e.Status == http.StatusForbidden && personal:
+		e.Reason = "this key has no Admin API access: it is scoped to one workspace, it is a legacy workspace key, or its linked account lacks the admin role"
+		e.Fix = keyFix
+	case e.Status == http.StatusForbidden || e.Status == http.StatusNotFound:
+		e.Reason = "the Admin API refused this account or key; it works only for organization accounts"
+		if e.Status == http.StatusNotFound {
+			e.Reason = "the Admin API has no such resource for this account; it works only for organization accounts"
 		}
-		e.Fix = "create an Admin API key (sk-ant-admin01-…) at " + adminKeysURL + " (organization accounts only; individual accounts: " + orgSetupURL + ") and save it with 'llmspend config add'"
+		e.Fix = "set up an organization at " + orgSetupURL + " if this is an individual account, then " + keyFix
 	}
 }
 

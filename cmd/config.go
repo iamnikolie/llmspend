@@ -11,10 +11,11 @@ import (
 )
 
 var (
-	addProvider string
-	addKey      string
-	addOrgID    string
-	addBaseURL  string
+	addProvider  string
+	addKey       string
+	addOrgID     string
+	addBaseURL   string
+	addWorkspace string
 )
 
 // readKey picks the key: --api-key, else the first non-empty stdin line.
@@ -53,24 +54,24 @@ var configAddCmd = &cobra.Command{
 			return fmt.Errorf("--provider: %w", err)
 		}
 		if addKey == "" {
-			hint := "https://platform.openai.com/settings/organization/admin-keys"
+			hint := "https://platform.openai.com/settings/organization/admin-keys, Permissions: Read only"
 			if p == config.Anthropic {
-				hint = "https://platform.claude.com/settings/admin-keys"
+				hint = "admin key from platform.claude.com/settings/admin-keys, or a personal key with no workspace scope from platform.claude.com/settings/keys"
 			}
-			fmt.Fprintf(stderr, "%s admin key (%s): ", p, hint)
+			fmt.Fprintf(stderr, "%s key (%s): ", p, hint)
 		}
 		key, err := readKey(addKey, stdin)
 		if err != nil {
 			return err
 		}
 		if w := config.KeyWarning(p, key); w != "" {
-			fmt.Fprintln(stderr, "warning:", w)
+			fmt.Fprintln(stderr, "note:", w)
 		}
 		c, err := config.Load(profile)
 		if err != nil {
 			return err
 		}
-		c.Upsert(config.Org{Name: name, Provider: p, AdminKey: key, OrgID: addOrgID, BaseURL: addBaseURL})
+		c.Upsert(config.Org{Name: name, Provider: p, AdminKey: key, OrgID: addOrgID, BaseURL: addBaseURL, WorkspaceID: addWorkspace})
 		path, err := config.Save(profile, c)
 		if err != nil {
 			return err
@@ -151,6 +152,7 @@ func init() {
 	f.StringVar(&addKey, "api-key", "", "admin key; else read from stdin")
 	f.StringVar(&addOrgID, "org-id", "", "expected org id (org-… / uuid); 'orgs' warns on mismatch")
 	f.StringVar(&addBaseURL, "base-url", "", "API root override (proxies, tests)")
+	f.StringVar(&addWorkspace, "workspace-id", "", "Anthropic: send anthropic-workspace-id (only if the API asks for it)")
 	_ = configAddCmd.MarkFlagRequired("provider")
 	configCmd.AddCommand(configAddCmd, configRmCmd, configShowCmd, configPathCmd)
 	rootCmd.AddCommand(configCmd)

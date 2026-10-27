@@ -1,0 +1,21 @@
+{
+  "object": "user",
+  "id": "user-test0000",
+  "orgs": {
+    "object": "list",
+    "data": [
+      {
+        "object": "organization",
+        "id": "org-test0000",
+        "name": "test-org-slug",
+        "title": "Test Org Title"
+      },
+      {
+        "object": "organization",
+        "id": "org-other0000",
+        "name": "user-test0000",
+        "title": "Personal"
+      }
+    ]
+  }
+}

@@ -16,14 +16,22 @@ One admin key per provider org, stored in a profile:
 
 - OpenAI: org Owner opens https://platform.openai.com/settings/organization/admin-keys
   → Create new admin key → name `llmspend`, **Permissions → Read only** → copy
-  `sk-admin-…`. llmspend only reads; an endpoint that refuses the key prints its
-  name and the 403 on stderr. Project keys
+  `sk-admin-…`. Read only covers every endpoint llmspend calls (checked live).
+  Project keys
   (`sk-proj-…`) do not work.
-- Anthropic: org admin opens https://platform.claude.com/settings/admin-keys →
-  Create admin key → name, expiration → copy `sk-ant-admin01-…`. Per Anthropic's
-  docs, Console admin keys have no selectable scopes (full Admin API access), so
-  there is no read-only choice; set an expiration. Individual (non-organization)
-  accounts have no Admin API.
+- Anthropic (organization accounts only; individual accounts have no Admin
+  API), either key works, both sent as `x-api-key`:
+  - Admin key: https://platform.claude.com/settings/admin-keys → Create admin
+    key → name, expiration → `sk-ant-admin01-…`. Per Anthropic's docs, Console
+    admin keys have no selectable scopes (full Admin API access).
+  - Personal key (Consoles with *Keys & access → API keys*, no Admin keys
+    item): https://platform.claude.com/settings/keys → Create key → Linked
+    account = yourself, no workspace scope, expiration → `sk-ant-api03-…`. Acts
+    with your role's permissions. Workspace-scoped and legacy workspace keys are
+    refused. It can also call the Messages API and spend money: set an
+    expiration. `config add` accepts it and prints that note.
+  - If the API ever answers that the key needs a workspace, re-add the org with
+    `--workspace-id wrkspc_…` (sent as `anthropic-workspace-id`; off by default).
 
 ```
 pbpaste | llmspend config add personal-openai --provider openai --org-id org-…
@@ -61,6 +69,8 @@ llmspend orgs                      # checks every key, shows the org it belongs 
   `(console / no key)`, kinds the API cannot split by key =
   `(not split by key)`). A family the org cannot read is a stderr note; the
   others still print.
+  OpenAI image models (gpt-image-*) bill text and image tokens at different
+  rates, so `usage` leaves them unpriced; `cost --by model` has their spend.
 - `llmspend cost [--month current|last|YYYY-MM] [--since 7d --until D] [--by day|project|model|line|key]`
   — billed USD from the cost reports. Default: this month to date, one row per
   org, total under the table. `--by model` reads OpenAI line items
@@ -120,7 +130,10 @@ exclusive; a bare date includes that day. All dates are UTC.
   page instead.
 - **Anthropic Admin API is for organization accounts only.** An individual
   account gets a one-line error with the fix: set up an organization at
-  platform.claude.com/settings/organization, then create an admin key.
+  platform.claude.com/settings/organization, then create an admin key or an
+  unscoped personal key. Every Anthropic refusal (401/403/404) prints one line
+  with the reason (rejected key, workspace-scoped key, role without access,
+  individual account) and the fix.
 - **Anthropic spend limits are Enterprise-only**; Console orgs get cost only.
 - **Claude Code analytics covers Console-billed use only** (API keys,
   Team/Enterprise seats) — never Pro/Max subscriptions.
@@ -136,6 +149,6 @@ exclusive; a bare date includes that day. All dates are UTC.
 - An embeddings-heavy app shows up under `--kind embeddings`; the per-key
   split is `llmspend usage --kind embeddings --by key`.
 - Admin keys are powerful. Create OpenAI ones as Read only; Anthropic Console
-  admin keys cannot be limited (full Admin API access), so give them an
-  expiration. llmspend only reads, but keep the key in this config only and
+  admin keys cannot be limited (full Admin API access) and personal keys can
+  spend money on the Messages API, so give them an expiration. llmspend only reads, but keep the key in this config only and
   revoke it in the console when done.

@@ -28,6 +28,8 @@ type fakeAPI struct {
 	t    *testing.T
 	mu   sync.Mutex
 	seen []string // "path?query"
+
+	workspaceHdr []string // anthropic-workspace-id per Anthropic call
 }
 
 func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -47,9 +49,12 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(`{"error":{"message":"Incorrect API key provided","type":"invalid_request_error"}}`))
 			return
 		}
-		w.Header().Set("openai-organization", "org-test0000")
+		// OpenAI sends the org slug here, not the org-… id (seen live).
+		w.Header().Set("openai-organization", "test-org-slug")
 		p := strings.TrimPrefix(r.URL.Path, "/openai/v1/organization/")
 		switch {
+		case r.URL.Path == "/openai/v1/me":
+			file = "openai/me.json"
 		case p == "usage/completions" && r.URL.Query().Get("page") == "page_test_2":
 			file = "openai/usage_completions_page2.json"
 		case p == "usage/completions":
@@ -62,6 +67,17 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			file = "openai/" + strings.ReplaceAll(p, "/", "_") + ".json"
 		}
 	case strings.HasPrefix(r.URL.Path, "/anthropic/v1/"):
+		if r.Header.Get("x-api-key") == "sk-ant-api03-workspace-scoped-0000" {
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte(`{"type":"error","error":{"type":"permission_error","message":"This API key does not have permission to access this resource."}}`))
+			return
+		}
+		f.mu.Lock()
+		f.workspaceHdr = append(f.workspaceHdr, r.Header.Get("anthropic-workspace-id"))
+		f.mu.Unlock()
+		if r.Header.Get("x-api-key") == "sk-ant-api03-personal-unscoped-0000" {
+			r.Header.Set("x-api-key", testAnthropicKey) // behaves like an admin key
+		}
 		if r.Header.Get("x-api-key") == "sk-ant-admin01-individual-0000" {
 			w.WriteHeader(http.StatusForbidden)
 			w.Write([]byte(`{"type":"error","error":{"type":"permission_error","message":"The Admin API is unavailable for individual accounts."}}`))
@@ -274,7 +290,7 @@ func TestCostMonthAndModel(t *testing.T) {
 		t.Fatalf("err=%v stderr=%s", err, errOut)
 	}
 	rows := decode(t, out)
-	near(t, "openai total", rowWhere(rows, "org", "oa")["usd"], 2.00)
+	near(t, "openai total", rowWhere(rows, "org", "oa")["usd"], 2.762)
 	near(t, "anthropic total (cents → USD)", rowWhere(rows, "org", "an")["usd"], 7.82)
 	if q := f.requests("/organization/costs"); len(q) != 1 || !strings.Contains(q[0], "start_time=1790812800") {
 		t.Fatalf("month start not used: %v", q)
@@ -287,6 +303,9 @@ func TestCostMonthAndModel(t *testing.T) {
 	rows = decode(t, out)
 	near(t, "gpt-4o-mini", rowWhere(rows, "model", "gpt-4o-mini-2024-07-18")["usd"], 1.65)
 	near(t, "web search", rowWhere(rows, "model", "(web_search)")["usd"], 0.02)
+	// Live line items carry a tier prefix and a modality suffix.
+	near(t, "flex tier", rowWhere(rows, "model", "gpt-6-luna")["usd"], 0.012)
+	near(t, "image + text halves", rowWhere(rows, "model", "gpt-image-2.5-flare")["usd"], 0.75)
 	if q := f.requests("/organization/costs"); !strings.Contains(q[len(q)-1], "group_by=line_item") || !strings.Contains(q[len(q)-1], "end_time=1790812800") {
 		t.Fatalf("last month query: %v", q)
 	}
@@ -315,8 +334,8 @@ func TestBudgetAndAlert(t *testing.T) {
 	rows := decode(t, out)
 	org := rowWhere(rows, "org", "oa", "scope", "org")
 	near(t, "limit", org["limit"], 10)
-	near(t, "left", org["left"], 8)
-	near(t, "used", org["used_pct"], 20)
+	near(t, "left", org["left"], 7.238)
+	near(t, "used", org["used_pct"], 27.6)
 	if org["alerts"] != "$5.00" {
 		t.Fatalf("alerts = %v", org["alerts"])
 	}
@@ -345,8 +364,21 @@ func TestKeysAndOrgs(t *testing.T) {
 	if r := rowWhere(rows, "name", "beta-worker"); r == nil || r["kind"] != "service_account" || r["project"] != "Beta Tools" || r["org_id"] != "org-test0000" {
 		t.Fatalf("beta-worker = %v", r)
 	}
-	if r := rowWhere(rows, "name", "llmspend"); r == nil || r["kind"] != "admin" {
+	if r := rowWhere(rows, "name", "llmspend"); r == nil || r["kind"] != "admin" || r["hint"] != "sk-admin…cccc" {
 		t.Fatalf("admin key = %v", r)
+	}
+	// admin_api_keys also returns project keys; they must not repeat as admin.
+	n := 0
+	for _, r := range rows {
+		if r["id"] == "key_test_alpha1" {
+			n++
+			if r["kind"] != "project" || r["hint"] != "sk-proj-…aaaa" {
+				t.Fatalf("alpha key = %v", r)
+			}
+		}
+	}
+	if n != 1 {
+		t.Fatalf("key_test_alpha1 listed %d times", n)
 	}
 	if r := rowWhere(rows, "name", "prod-service"); r == nil || r["project"] != "Production" || r["org_id"] != "00000000-0000-4000-8000-000000000001" {
 		t.Fatalf("prod-service = %v", r)
@@ -354,7 +386,7 @@ func TestKeysAndOrgs(t *testing.T) {
 	if rowWhere(rows, "name", "old-key") != nil {
 		t.Fatal("archived key shown without --all")
 	}
-	if !strings.Contains(out, "sk-proj-****aaaa") || strings.Contains(out, testOpenAIKey) {
+	if strings.Contains(out, testOpenAIKey) {
 		t.Fatal("hints wrong or secret leaked")
 	}
 
@@ -366,7 +398,7 @@ func TestKeysAndOrgs(t *testing.T) {
 	if r := rowWhere(rows, "org", "an"); r["org_name"] != "Test Org" || r["status"] != "ok" {
 		t.Fatalf("anthropic org = %v", r)
 	}
-	if r := rowWhere(rows, "org", "oa"); r["org_id"] != "org-test0000" || r["key"] != "sk-admin-…0000" {
+	if r := rowWhere(rows, "org", "oa"); r["org_id"] != "org-test0000" || r["org_name"] != "Test Org Title" || r["key"] != "sk-admin-…0000" {
 		t.Fatalf("openai org = %v", r)
 	}
 }
@@ -420,10 +452,12 @@ func TestBadKeyIsReported(t *testing.T) {
 
 func TestConfigAddShowRm(t *testing.T) {
 	setup(t)
+	// A personal key is accepted (the Admin API takes unscoped ones), with
+	// a note that it can also spend money.
 	stdin = strings.NewReader("sk-ant-api03-notadmin-123456\n")
 	t.Cleanup(func() { stdin = os.Stdin })
 	_, errOut, err := run(t, "config", "add", "extra", "--provider", "claude")
-	if err != nil || !strings.Contains(errOut, "does not look like an Anthropic Admin API key") {
+	if err != nil || !strings.Contains(errOut, "not scoped to one workspace") || !strings.Contains(errOut, "spend money") {
 		t.Fatalf("err=%v stderr=%s", err, errOut)
 	}
 	out, _, err := run(t, "config", "show", "--json")
@@ -610,7 +644,44 @@ func TestAnthropicOrgOnlyErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, errOut, _ = run(t, "cost", "-p", "anthropic")
-	if !strings.Contains(errOut, "this is not an Admin API key") || !strings.Contains(errOut, "platform.claude.com/settings/admin-keys") {
+	if !strings.Contains(errOut, "the key was rejected") || !strings.Contains(errOut, "platform.claude.com/settings/keys with Linked account = you and no workspace scope") {
 		t.Fatalf("stderr: %q", errOut)
+	}
+
+	c.Orgs[1].AdminKey = "sk-ant-api03-workspace-scoped-0000"
+	if _, err := config.Save("default", c); err != nil {
+		t.Fatal(err)
+	}
+	_, errOut, _ = run(t, "cost", "-p", "anthropic")
+	if !strings.Contains(errOut, "scoped to one workspace") || strings.Count(strings.TrimSpace(errOut), "\n") != 0 {
+		t.Fatalf("stderr: %q", errOut)
+	}
+}
+
+func TestAnthropicPersonalKeyAndWorkspaceHeader(t *testing.T) {
+	f := setup(t)
+	c, _ := config.Load("default")
+	c.Orgs[1].AdminKey = "sk-ant-api03-personal-unscoped-0000"
+	if _, err := config.Save("default", c); err != nil {
+		t.Fatal(err)
+	}
+	if _, errOut, err := run(t, "cost", "-p", "anthropic"); err != nil {
+		t.Fatalf("personal unscoped key should work: %v %s", err, errOut)
+	}
+	for _, h := range f.workspaceHdr {
+		if h != "" {
+			t.Fatalf("anthropic-workspace-id sent without workspace_id: %q", h)
+		}
+	}
+	c.Orgs[1].WorkspaceID = "wrkspc_test_prod"
+	if _, err := config.Save("default", c); err != nil {
+		t.Fatal(err)
+	}
+	f.workspaceHdr = nil
+	if _, _, err := run(t, "cost", "-p", "anthropic"); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.workspaceHdr) == 0 || f.workspaceHdr[0] != "wrkspc_test_prod" {
+		t.Fatalf("workspace header = %v", f.workspaceHdr)
 	}
 }

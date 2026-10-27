@@ -38,6 +38,9 @@ type Org struct {
 	AdminKey string `yaml:"admin_key"`
 	OrgID    string `yaml:"org_id,omitempty"`
 	BaseURL  string `yaml:"base_url,omitempty"`
+	// WorkspaceID is sent as anthropic-workspace-id, for a personal key the
+	// API asks to pin to a workspace. Empty means no header (the default).
+	WorkspaceID string `yaml:"workspace_id,omitempty"`
 	// FromEnv marks an org synthesized from OPENAI_ADMIN_KEY / ANTHROPIC_ADMIN_KEY.
 	FromEnv bool `yaml:"-"`
 }
@@ -68,7 +71,8 @@ func ValidProvider(p string) (string, error) {
 	return "", fmt.Errorf("unknown provider %q: use openai or anthropic", p)
 }
 
-// KeyWarning returns a note when a key does not look like an admin key.
+// KeyWarning returns a note about a key's kind; it never rejects one, the
+// provider decides on the first call.
 func KeyWarning(provider, key string) string {
 	switch provider {
 	case OpenAI:
@@ -76,8 +80,12 @@ func KeyWarning(provider, key string) string {
 			return "this does not look like an OpenAI admin key (sk-admin-…); project keys cannot read usage or costs"
 		}
 	case Anthropic:
-		if !strings.HasPrefix(key, "sk-ant-admin") {
-			return "this does not look like an Anthropic Admin API key (sk-ant-admin…); regular API keys cannot read usage or costs"
+		switch {
+		case strings.HasPrefix(key, "sk-ant-admin"):
+		case strings.HasPrefix(key, "sk-ant-api"):
+			return "personal or service-account key: the Admin API takes it only if it is not scoped to one workspace, and it acts with the linked account's permissions. It can also call the Messages API and spend money, so give it an expiration"
+		default:
+			return "this does not look like an Anthropic key (sk-ant-admin01-… or sk-ant-api03-…)"
 		}
 	}
 	return ""

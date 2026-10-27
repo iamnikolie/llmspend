@@ -19,9 +19,52 @@ import (
 // API is one OpenAI org.
 type API struct {
 	C *client.Client
-	// Org is the organization id from the openai-organization response
-	// header of the last call, when OpenAI sends it.
+	// Org is the organization slug from the openai-organization response
+	// header of the last call ("my-org-name", not "org-…").
 	Org string
+
+	who *OrgInfo
+}
+
+// OrgInfo names the org behind the key.
+type OrgInfo struct {
+	ID    string // org-…
+	Slug  string // what the openai-organization header carries
+	Title string // display name
+}
+
+// Who finds the org behind the admin key. The openai-organization header
+// carries the org's slug, not its id; /v1/me lists the caller's orgs with
+// id, slug (name) and title, and the slug picks the right one. When /me
+// cannot be read, ID stays empty and Slug is still set.
+func (a *API) Who(ctx context.Context) (*OrgInfo, error) {
+	if a.who != nil {
+		return a.who, nil
+	}
+	r, err := a.C.Get(ctx, "/organization/projects", url.Values{"limit": {"1"}})
+	if err != nil {
+		return nil, err
+	}
+	info := &OrgInfo{Slug: r.Header.Get("openai-organization")}
+	a.Org = info.Slug
+	var me struct {
+		Orgs struct {
+			Data []struct {
+				ID    string `json:"id"`
+				Name  string `json:"name"`
+				Title string `json:"title"`
+			} `json:"data"`
+		} `json:"orgs"`
+	}
+	if _, err := a.C.GetJSON(ctx, "/me", nil, &me); err == nil {
+		for _, o := range me.Orgs.Data {
+			if o.Name == info.Slug {
+				info.ID, info.Title = o.ID, o.Title
+			}
+		}
+	}
+	a.who = info
+	return info, nil
 }
 
 // New wraps a client already pointed at the org's base URL and key.
@@ -237,13 +280,31 @@ func (a *API) Costs(ctx context.Context, from, to time.Time, groupBy []string) (
 	}
 }
 
-// ModelOfLineItem extracts the model from a cost line item such as
-// "gpt-5-mini-2025-08-07, input" or "gpt-4o, cached input".
+// ModelOfLineItem extracts the model from a cost line item. Seen live:
+// "gpt-5-mini-2025-08-07, input", "flex | gpt-6-luna, output" (service tier
+// prefix), "gpt-image-2.5-flare image, output" (modality suffix), "whisper".
 func ModelOfLineItem(li string) string {
 	if i := strings.LastIndex(li, ", "); i > 0 {
-		return li[:i]
+		li = li[:i]
 	}
-	return li
+	if i := strings.LastIndex(li, " | "); i >= 0 {
+		li = li[i+3:]
+	}
+	for _, m := range []string{" image", " text", " audio"} {
+		li = strings.TrimSuffix(li, m)
+	}
+	return strings.TrimSpace(li)
+}
+
+// shortHint collapses the run of asterisks OpenAI puts in redacted values
+// ("sk-proj-****…****5RsA", 160 characters) to "sk-proj-…5RsA".
+func shortHint(h string) string {
+	i := strings.Index(h, "**")
+	if i < 0 {
+		return h
+	}
+	j := strings.LastIndex(h, "*")
+	return h[:i] + "…" + h[j+1:]
 }
 
 type project struct {
@@ -354,7 +415,7 @@ func (a *API) ProjectKeys(ctx context.Context, p spend.Project) ([]spend.Key, er
 			kind = "service_account"
 		}
 		out = append(out, spend.Key{
-			ID: k.ID, Name: k.Name, Hint: k.RedactedValue, Kind: kind,
+			ID: k.ID, Name: k.Name, Hint: shortHint(k.RedactedValue), Kind: kind,
 			ProjectID: p.ID, Project: p.Name, Owner: k.Owner.String(), Status: k.OwnerAccess,
 			Created: unix(k.CreatedAt), LastUsed: lastUsed(k.LastUsedAt),
 		})
@@ -362,7 +423,9 @@ func (a *API) ProjectKeys(ctx context.Context, p spend.Project) ([]spend.Key, er
 	return out, nil
 }
 
-// AdminKeys lists the org's admin keys.
+// AdminKeys lists the org's admin keys. The endpoint answers with every key
+// in the org, project keys included (all typed organization.admin_api_key),
+// so only the sk-admin ones are kept; project keys come from ProjectKeys.
 func (a *API) AdminKeys(ctx context.Context) ([]spend.Key, error) {
 	ks, err := list[apiKey](ctx, a, "/organization/admin_api_keys", nil)
 	if err != nil {
@@ -370,8 +433,11 @@ func (a *API) AdminKeys(ctx context.Context) ([]spend.Key, error) {
 	}
 	out := make([]spend.Key, 0, len(ks))
 	for _, k := range ks {
+		if !strings.HasPrefix(k.RedactedValue, "sk-admin") {
+			continue
+		}
 		out = append(out, spend.Key{
-			ID: k.ID, Name: k.Name, Hint: k.RedactedValue, Kind: "admin",
+			ID: k.ID, Name: k.Name, Hint: shortHint(k.RedactedValue), Kind: "admin",
 			Owner: k.Owner.String(), Created: unix(k.CreatedAt), LastUsed: lastUsed(k.LastUsedAt),
 		})
 	}

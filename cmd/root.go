@@ -156,7 +156,11 @@ type target struct {
 }
 
 func newClient(o config.Org) *client.Client {
-	return &client.Client{BaseURL: config.BaseURLFor(o), Key: o.AdminKey, Verbose: verbose, HTTP: httpClient}
+	c := &client.Client{BaseURL: config.BaseURLFor(o), Key: o.AdminKey, Verbose: verbose, HTTP: httpClient}
+	if o.WorkspaceID != "" && o.Provider == config.Anthropic {
+		c.Headers = map[string]string{"anthropic-workspace-id": o.WorkspaceID}
+	}
+	return c
 }
 
 // targets loads the profile and returns the orgs selected by --provider and

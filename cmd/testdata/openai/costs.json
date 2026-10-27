@@ -6,9 +6,42 @@
       "start_time": 1761350400,
       "end_time": 1761436800,
       "results": [
-        {"object": "organization.costs.result", "amount": {"value": 0.18, "currency": "usd"}, "line_item": "gpt-4o-mini-2024-07-18, input", "project_id": "proj_test_alpha", "api_key_id": null, "quantity": null, "quantity_unit": null},
-        {"object": "organization.costs.result", "amount": {"value": 0.06, "currency": "usd"}, "line_item": "gpt-4o-mini-2024-07-18, output", "project_id": "proj_test_alpha", "api_key_id": null, "quantity": null, "quantity_unit": null},
-        {"object": "organization.costs.result", "amount": {"value": 0.35, "currency": "usd"}, "line_item": "gpt-4o-2024-08-06, input", "project_id": "proj_test_beta", "api_key_id": null, "quantity": null, "quantity_unit": null}
+        {
+          "object": "organization.costs.result",
+          "amount": {
+            "value": 0.18,
+            "currency": "usd"
+          },
+          "line_item": "gpt-4o-mini-2024-07-18, input",
+          "project_id": "proj_test_alpha",
+          "api_key_id": null,
+          "quantity": null,
+          "quantity_unit": null
+        },
+        {
+          "object": "organization.costs.result",
+          "amount": {
+            "value": 0.06,
+            "currency": "usd"
+          },
+          "line_item": "gpt-4o-mini-2024-07-18, output",
+          "project_id": "proj_test_alpha",
+          "api_key_id": null,
+          "quantity": null,
+          "quantity_unit": null
+        },
+        {
+          "object": "organization.costs.result",
+          "amount": {
+            "value": 0.35,
+            "currency": "usd"
+          },
+          "line_item": "gpt-4o-2024-08-06, input",
+          "project_id": "proj_test_beta",
+          "api_key_id": null,
+          "quantity": null,
+          "quantity_unit": null
+        }
       ]
     },
     {
@@ -16,7 +49,54 @@
       "start_time": 1761436800,
       "end_time": 1761523200,
       "results": [
-        {"object": "organization.costs.result", "amount": {"value": 1.41, "currency": "usd"}, "line_item": "gpt-4o-mini-2024-07-18, input", "project_id": "proj_test_alpha", "api_key_id": null, "quantity": null, "quantity_unit": null}
+        {
+          "object": "organization.costs.result",
+          "amount": {
+            "value": 1.41,
+            "currency": "usd"
+          },
+          "line_item": "gpt-4o-mini-2024-07-18, input",
+          "project_id": "proj_test_alpha",
+          "api_key_id": null,
+          "quantity": null,
+          "quantity_unit": null
+        },
+        {
+          "object": "organization.costs.result",
+          "amount": {
+            "value": 0.012,
+            "currency": "usd"
+          },
+          "line_item": "flex | gpt-6-luna, output",
+          "project_id": "proj_test_beta",
+          "api_key_id": null,
+          "quantity": null,
+          "quantity_unit": null
+        },
+        {
+          "object": "organization.costs.result",
+          "amount": {
+            "value": 0.5,
+            "currency": "usd"
+          },
+          "line_item": "gpt-image-2.5-flare image, output",
+          "project_id": "proj_test_beta",
+          "api_key_id": null,
+          "quantity": null,
+          "quantity_unit": null
+        },
+        {
+          "object": "organization.costs.result",
+          "amount": {
+            "value": 0.25,
+            "currency": "usd"
+          },
+          "line_item": "gpt-image-2.5-flare text, input",
+          "project_id": "proj_test_beta",
+          "api_key_id": null,
+          "quantity": null,
+          "quantity_unit": null
+        }
       ]
     }
   ],

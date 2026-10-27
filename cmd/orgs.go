@@ -3,15 +3,14 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"net/url"
 
 	"github.com/iamnikolie/llmspend/internal/config"
 	"github.com/spf13/cobra"
 )
 
 // orgID asks the provider which org the key belongs to: Anthropic's
-// /organizations/me, or the openai-organization header on a cheap list
-// call. Falls back to the org_id in the config.
+// /organizations/me, OpenAI's /v1/me matched by the org slug. Falls back to
+// the org_id in the config, then to the OpenAI slug.
 func (t target) orgID(ctx context.Context) string {
 	if t.an != nil {
 		if o, err := t.an.Me(ctx); err == nil {
@@ -19,13 +18,14 @@ func (t target) orgID(ctx context.Context) string {
 		}
 		return t.org.OrgID
 	}
-	if t.oa.Org == "" {
-		if r, err := t.oa.C.Get(ctx, "/organization/projects", url.Values{"limit": {"1"}}); err == nil {
-			t.oa.Org = r.Header.Get("openai-organization")
+	if w, err := t.oa.Who(ctx); err == nil {
+		if w.ID != "" {
+			return w.ID
 		}
-	}
-	if t.oa.Org != "" {
-		return t.oa.Org
+		if t.org.OrgID != "" {
+			return t.org.OrgID
+		}
+		return w.Slug
 	}
 	return t.org.OrgID
 }
@@ -58,14 +58,16 @@ var orgsCmd = &cobra.Command{
 					row["org_id"], row["org_name"] = o.ID, o.Name
 				}
 			} else {
-				r, err := t.oa.C.Get(ctx, "/organization/projects", url.Values{"limit": {"1"}})
-				if err != nil {
+				w, err := t.oa.Who(ctx)
+				switch {
+				case err != nil:
 					row["status"] = "error: " + firstLine(err.Error())
 					bad++
-				} else if id := r.Header.Get("openai-organization"); id != "" {
-					row["org_id"] = id
-				} else {
+				case w.ID != "":
+					row["org_id"], row["org_name"] = w.ID, w.Title
+				default:
 					row["org_id"] = t.org.OrgID
+					row["status"] = "ok (org id not resolved; slug " + w.Slug + ")"
 				}
 			}
 			if t.org.OrgID != "" && row["org_id"] != nil && row["org_id"] != t.org.OrgID {

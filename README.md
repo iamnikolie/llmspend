@@ -41,7 +41,7 @@ the providers' admin APIs:
 | Spend limit / alerts | org and project spend limits and spend alerts | Enterprise only, not for Console orgs |
 | Keys → projects | projects, project keys, admin keys | API keys, workspaces |
 | Claude Code | — | [Claude Code Analytics API](https://platform.claude.com/docs/en/manage-claude/claude-code-analytics-api), Console-billed use only |
-| Who can read it | any org, admin key | organization accounts only, admin key |
+| Who can read it | any org, admin key (Read only is enough) | organization accounts only; admin key or a personal key with no workspace scope |
 | Prepaid credit balance | not in the API | not in the API |
 
 `llmspend` reads them, normalizes the two shapes into one set of rows, and
@@ -93,18 +93,29 @@ One **admin key per org**. Regular API keys cannot read usage or cost.
   [Settings → Organization → Admin keys](https://platform.openai.com/settings/organization/admin-keys),
   clicks **Create new admin key**, names it `llmspend`, sets
   **Permissions → Read only**, and copies the `sk-admin-…` secret. llmspend
-  only reads; if an endpoint ever refuses a Read only key, the error names it.
-- **Anthropic** — an org admin opens
-  [Settings → Admin keys](https://platform.claude.com/settings/admin-keys),
-  clicks **Create admin key**, names it, picks an expiration and copies the
-  `sk-ant-admin01-…` secret. Anthropic's docs say Console admin keys have no
-  selectable scopes: every key has full Admin API access, so there is no
-  read-only option to pick — the expiration is the lever. The Admin API needs
-  an organization; individual accounts do not have it.
+  only reads, and a Read only key covers every endpoint it calls (checked
+  live: all 11 usage families, costs, spend limits and alerts, projects,
+  project and admin keys, /v1/me).
+- **Anthropic** — two kinds of key work. Both need an organization account
+  (individual accounts have no Admin API):
+  - **Admin key**, if your Console still has
+    [Settings → Admin keys](https://platform.claude.com/settings/admin-keys):
+    **Create admin key**, name, expiration, copy `sk-ant-admin01-…`.
+    Anthropic's docs say Console admin keys have no selectable scopes (full
+    Admin API access), so there is no read-only option; the expiration is the
+    lever.
+  - **Personal key**, on Consoles with the newer *Keys & access → API keys*
+    page ([platform.claude.com/settings/keys](https://platform.claude.com/settings/keys)):
+    **Create key**, Linked account = yourself, **no workspace scope** (all
+    workspaces), an expiration, copy `sk-ant-api03-…`. The Admin API accepts
+    such a key with your own role's permissions. A key scoped to one
+    workspace, or a legacy workspace key, is refused. **A personal key can
+    also call the Messages API and spend money** — llmspend never does, but
+    set an expiration and keep it in this config only.
 
 ```bash
 pbpaste | llmspend config add personal-openai --provider openai --org-id org-…
-pbpaste | llmspend config add team-anthropic --provider anthropic
+pbpaste | llmspend config add team-anthropic --provider anthropic   # admin or personal key
 llmspend orgs          # checks every key and shows the org it belongs to
 llmspend config show   # keys masked
 ```

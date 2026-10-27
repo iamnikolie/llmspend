@@ -27,7 +27,9 @@ Some things are known and by design rather than vulnerabilities:
 - **Admin keys can do more than llmspend does.** Create the OpenAI key with
   **Permissions → Read only**; llmspend only reads. An
   Anthropic Console admin key cannot be limited — per Anthropic's docs it
-  carries full Admin API access (Console keys have no scopes) — so give it an
+  carries full Admin API access (Console keys have no scopes) — and an
+  Anthropic personal key with no workspace scope, the other key the Admin API
+  accepts, also works on the Messages API and can spend money. Give either an
   expiration. llmspend only ever sends `GET` — its HTTP client has no other
   method — but the key itself may be powerful. Revoke it when you stop using
   llmspend.

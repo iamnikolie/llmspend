@@ -72,7 +72,7 @@ func TestValidation(t *testing.T) {
 	if KeyWarning(OpenAI, "sk-proj-x") == "" || KeyWarning(OpenAI, "sk-admin-x") != "" {
 		t.Fatal("KeyWarning openai")
 	}
-	if KeyWarning(Anthropic, "sk-ant-api03-x") == "" || KeyWarning(Anthropic, "sk-ant-admin01-x") != "" {
+	if !strings.Contains(KeyWarning(Anthropic, "sk-ant-api03-x"), "spend money") || KeyWarning(Anthropic, "sk-ant-admin01-x") != "" || KeyWarning(Anthropic, "xyz") == "" {
 		t.Fatal("KeyWarning anthropic")
 	}
 	if got := MaskKey("sk-admin-abcdefghijklmnop1234"); got != "sk-admin-…1234" {

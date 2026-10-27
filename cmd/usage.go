@@ -368,12 +368,24 @@ func (a *usageAgg) emit() error {
 		footer("Total: %d input / %d output tokens, est %s for token kinds. Estimates use the local price table at standard rates; 'llmspend cost' has the billed amount for every kind.", totIn, totOut, money(totEst))
 	}
 	if len(a.unpriced) > 0 {
-		ms := make([]string, 0, len(a.unpriced))
+		var ms, images []string
 		for m := range a.unpriced {
-			ms = append(ms, m)
+			// Image models bill text and image tokens at different rates the
+			// usage rows do not separate.
+			if strings.HasPrefix(m, "openai/gpt-image") || strings.HasPrefix(m, "openai/dall-e") {
+				images = append(images, m)
+			} else {
+				ms = append(ms, m)
+			}
 		}
 		sort.Strings(ms)
-		fmt.Fprintf(stderr, "note: no price for %s; est_usd leaves them out (try 'llmspend prices refresh')\n", strings.Join(ms, ", "))
+		sort.Strings(images)
+		if len(ms) > 0 {
+			fmt.Fprintf(stderr, "note: no price for %s; est_usd leaves them out (try 'llmspend prices refresh')\n", strings.Join(ms, ", "))
+		}
+		if len(images) > 0 {
+			fmt.Fprintf(stderr, "note: %s not estimated (image models bill text and image tokens at different rates); 'llmspend cost --by model' has their spend\n", strings.Join(images, ", "))
+		}
 	}
 	return nil
 }
