@@ -13,6 +13,7 @@ import (
 	"github.com/iamnikolie/llmspend/internal/anthropic"
 	"github.com/iamnikolie/llmspend/internal/client"
 	"github.com/iamnikolie/llmspend/internal/config"
+	"github.com/iamnikolie/llmspend/internal/gemini"
 	"github.com/iamnikolie/llmspend/internal/openai"
 	"github.com/spf13/cobra"
 )
@@ -63,8 +64,9 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:   "llmspend",
-	Short: "Read-only OpenAI and Anthropic usage, cost, budgets and keys from the shell",
-	Long: "llmspend — what your OpenAI and Anthropic orgs used and spent, read with admin keys.\n\n" +
+	Short: "Read-only OpenAI, Anthropic and Gemini usage, cost, budgets and keys from the shell",
+	Long: "llmspend — what your OpenAI and Anthropic orgs and Gemini projects used and spent,\n" +
+		"read with admin keys (Gemini: a gcloud login).\n\n" +
 		"  llmspend usage --since 7d --by model     tokens per model, with estimated cost\n" +
 		"  llmspend cost --month                    billed cost, month to date\n" +
 		"  llmspend budget                          spend limit vs month to date\n" +
@@ -115,7 +117,7 @@ func init() {
 		def = config.DefaultProfile
 	}
 	pf.StringVar(&profile, "config", def, "profile name (subdirectory of ~/.llmspend/; env LLMSPEND_CONFIG)")
-	pf.StringVarP(&providerFlag, "provider", "p", "", "only this provider: openai or anthropic")
+	pf.StringVarP(&providerFlag, "provider", "p", "", "only this provider: openai, anthropic or gemini")
 	pf.StringSliceVar(&orgFlags, "org", nil, "only these orgs by config name (comma-separated)")
 	pf.BoolVar(&jsonOutput, "json", false, "JSON output (same as --format json)")
 	pf.StringVar(&outputFormat, "format", "", "output format: md (default), table, json, csv, tsv")
@@ -153,6 +155,7 @@ type target struct {
 	org config.Org
 	oa  *openai.API
 	an  *anthropic.API
+	gm  *gemini.API
 }
 
 func newClient(o config.Org) *client.Client {
@@ -184,9 +187,13 @@ func targets(only string) ([]target, error) {
 	out := make([]target, 0, len(orgs))
 	for _, o := range orgs {
 		t := target{org: o}
-		if o.Provider == config.OpenAI {
+		switch o.Provider {
+		case config.OpenAI:
 			t.oa = openai.New(newClient(o))
-		} else {
+		case config.Gemini:
+			t.gm = gemini.New(newClient(o), o.Account, o.Projects, o.BillingTable)
+			t.gm.Now = now
+		default:
 			t.an = anthropic.New(newClient(o))
 		}
 		out = append(out, t)

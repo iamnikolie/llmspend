@@ -4,8 +4,9 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/iamnikolie/llmspend.svg)](https://pkg.go.dev/github.com/iamnikolie/llmspend)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-What your OpenAI and Anthropic orgs used and spent, from the shell. One
-binary for both providers, read with admin keys, read-only.
+What your OpenAI and Anthropic orgs and Gemini API projects used and spent,
+from the shell. One binary for all three, read with admin keys (Gemini: a
+gcloud login), read-only.
 
 ```bash
 llmspend usage --since 7d --by model     # every usage kind per model, with an estimated cost
@@ -16,6 +17,7 @@ llmspend budget --alert-at 80            # spend limit vs month to date; exit 3 
 llmspend keys                            # which key belongs to which project and org
 llmspend prices gpt-4o                   # local price table; 'prices refresh' updates it
 llmspend claude-code --since 30d         # Claude Code analytics per user
+llmspend usage -p gemini --by project,model   # Gemini tokens per project, estimated cost
 ```
 
 Built for coding agents and cron as much as for people: Markdown tables on
@@ -34,17 +36,17 @@ Finding out what one app spent meant screenshots of two consoles, the
 pricing pages and a guess at which org a key lives in. The data is all in
 the providers' admin APIs:
 
-| | OpenAI | Anthropic |
-| --- | --- | --- |
-| Usage | [Usage API](https://platform.openai.com/docs/api-reference/usage), all 11 families | [Usage report](https://platform.claude.com/docs/en/manage-claude/usage-cost-api) (Messages) |
-| Billed cost | Costs API | Cost report |
-| Spend limit / alerts | org and project spend limits and spend alerts | Enterprise only, not for Console orgs |
-| Keys → projects | projects, project keys, admin keys | API keys, workspaces |
-| Claude Code | — | [Claude Code Analytics API](https://platform.claude.com/docs/en/manage-claude/claude-code-analytics-api), Console-billed use only |
-| Who can read it | any org, admin key (Read only is enough) | organization accounts only; admin key or a personal key with no workspace scope |
-| Prepaid credit balance | not in the API | not in the API |
+| | OpenAI | Anthropic | Gemini API |
+| --- | --- | --- | --- |
+| Usage | [Usage API](https://platform.openai.com/docs/api-reference/usage), all 11 families | [Usage report](https://platform.claude.com/docs/en/manage-claude/usage-cost-api) (Messages) | Cloud Monitoring token and request counts per project and model |
+| Billed cost | Costs API | Cost report | only via the [Cloud Billing export to BigQuery](https://cloud.google.com/billing/docs/how-to/export-data-bigquery) |
+| Spend limit / alerts | org and project spend limits and spend alerts | Enterprise only, not for Console orgs | not in an API |
+| Keys → projects | projects, project keys, admin keys | API keys, workspaces | Google Cloud projects (no per-key usage) |
+| Claude Code | — | [Claude Code Analytics API](https://platform.claude.com/docs/en/manage-claude/claude-code-analytics-api), Console-billed use only | — |
+| Who can read it | any org, admin key (Read only is enough) | organization accounts only; admin key or a personal key with no workspace scope | a gcloud login with Monitoring Viewer on the projects |
+| Prepaid credit balance | not in the API | not in the API | not in the API |
 
-`llmspend` reads them, normalizes the two shapes into one set of rows, and
+`llmspend` reads them, normalizes the shapes into one set of rows, and
 names projects and keys instead of printing ids.
 
 **Read-only by construction.** The HTTP client can only send `GET`: there is
@@ -122,6 +124,17 @@ llmspend orgs          # checks every key and shows the org it belongs to
 llmspend config show   # keys masked
 ```
 
+- **Gemini** — no key. An org is the Google Cloud projects behind your AI
+  Studio API keys (`gen-lang-client-*`), read with your gcloud login:
+  `--account you@gmail.com` (llmspend runs `gcloud auth print-access-token
+  --account=…`, so the active gcloud account stays as it is), or Application
+  Default Credentials without it. `--projects a,b` pins the projects;
+  otherwise every `gen-lang-client-*` project the login can see is read.
+
+```bash
+llmspend config add gemini --provider gemini --account you@gmail.com
+```
+
 Keys live in `~/.llmspend/<profile>/config.yaml` (mode 0600, directory 0700).
 `--config work` (or `LLMSPEND_CONFIG=work`) switches to another profile, so
 personal and work orgs never mix. `OPENAI_ADMIN_KEY` and
@@ -131,17 +144,17 @@ personal and work orgs never mix. `OPENAI_ADMIN_KEY` and
 
 | Command | What it shows |
 | --- | --- |
-| `usage [--since 7d] [--by model,key,project,day] [--kind K] [--bucket 1d\|1h]` | Every usage kind with a `kind` column: tokens (input / cached / cache-write / output, OpenAI request counts, `est_usd`) or a quantity and unit (images, characters, seconds, calls, sessions, bytes) |
-| `cost [--month current\|last\|YYYY-MM] [--since 7d] [--by day,project,model,line,key]` | Billed USD; month to date by default, total under the table |
+| `usage [--since 7d] [--by model,key,project,day] [--kind K] [--bucket 1d\|1h]` | Every usage kind with a `kind` column: tokens (input / cached / cache-write / output, OpenAI and Gemini request counts, `est_usd`) or a quantity and unit (images, characters, seconds, calls, sessions, bytes, requests) |
+| `cost [--month current\|last\|YYYY-MM] [--since 7d] [--by day,project,model,line,key]` | Billed USD; month to date by default, total under the table. Gemini: from the BigQuery billing export, with the billing currency next to USD |
 | `budget [--projects] [--alert-at N]` | Month-to-date cost next to spend limits and alerts; exit 3 when a limit is N% used |
 | `keys [--all]` | Every key the admin API lists, with project/workspace, org id, redacted hint, owner, last use |
-| `projects [--all]` | OpenAI projects and Anthropic workspaces |
-| `orgs` | Each admin key checked against its provider, with the org id (and Anthropic org name) |
+| `projects [--all]` | OpenAI projects, Anthropic workspaces, Gemini Google Cloud projects |
+| `orgs` | Each admin key (Gemini: gcloud login) checked against its provider, with the org id (and Anthropic org name; Gemini project ids) |
 | `claude-code [--since 7d] [--by user,model,day,terminal]` | Sessions, commits, PRs, lines, tokens and Anthropic's cost estimate |
-| `prices [model]` / `prices refresh` | The local price table; refresh re-reads both public pricing pages |
+| `prices [model]` / `prices refresh` | The local price table; refresh re-reads the three public pricing pages |
 | `skill` | The agent reference |
 
-Every command runs across all orgs in the profile; `-p openai|anthropic` and
+Every command runs across all orgs in the profile; `-p openai|anthropic|gemini` and
 `--org a,b` narrow it. A failing org prints `! <org> (<provider>): …` on stderr
 and the others still answer.
 
@@ -154,9 +167,44 @@ OpenAI reports usage per family; `usage` reads all of them and tags each row:
 `completions` (Chat Completions and Responses), `embeddings`, `moderations`,
 `decisions`, `images`, `speech`, `transcription`, `web_search`,
 `file_search`, `code_interpreter`, `vector_stores`. Anthropic's report is one
-kind, `messages`. `--kind embeddings,completions` narrows the read. Token
-kinds are priced from the local table; the others show a quantity and unit
-and leave the money to `cost`.
+kind, `messages`. Gemini has `generate` (text, image, speech and music
+generation), `embeddings` and `predict` (Imagen and Veo, as request counts).
+`--kind embeddings,completions` narrows the read. Token kinds are priced from
+the local table; the others show a quantity and unit and leave the money to
+`cost`.
+
+### Gemini
+
+Google publishes no API for billed Gemini cost or the AI Studio prepay
+balance. `usage -p gemini` reads Cloud Monitoring instead: per project and
+model, output tokens split by modality, input tokens and requests from the
+quota metrics of every tier, embedding tokens, Imagen/Veo requests. `est_usd`
+prices them from the table (image, audio and video output at their own
+rates, Lyria per song, free tier at $0) and is an **estimate**: all input at
+the uncached rate, standard tier, no grounding or cache-storage fees. Imagen,
+Veo and per-image-only models are listed as not priced.
+
+The exact figure needs the Cloud Billing export to BigQuery. Once
+`billing_table` is set, `cost` and `budget` read the export table with GET
+calls only (schema, then `tabledata.list` per daily partition; no SQL job,
+which would be a POST). To turn it on, as a Billing Account Administrator:
+
+1. In the project that will hold the data, enable the BigQuery API and the
+   BigQuery Data Transfer API, and create a dataset:
+   `bq --project_id=<project> mk --location=EU --dataset billing_export`.
+2. Console → **Billing** → the billing account → **Billing export** →
+   **BigQuery export** → **Standard usage cost** → **Edit settings** → pick
+   the project and dataset → **Save**. The table
+   `gcp_billing_export_v1_<billing account id with _>` fills within hours;
+   Google's docs say it backfills from the start of the previous month.
+3. Point llmspend at it (repeat the other flags, `config add` replaces the
+   entry):
+
+```bash
+llmspend config add gemini --provider gemini --account you@gmail.com \
+  --billing-table <project>.billing_export.gcp_billing_export_v1_XXXXXX_XXXXXX_XXXXXX
+llmspend cost -p gemini --by project
+```
 
 ### Estimates vs bills
 
@@ -168,13 +216,16 @@ two differ; trust `cost` for money and `usage` for where it went.
 The price table ships inside the binary and is replaced by
 `~/.llmspend/prices.json` after `llmspend prices refresh`, which parses the
 providers' public pricing pages (Markdown). A refresh that finds no prices
-leaves the table as it was.
+leaves the table as it was. Gemini prices come from
+[ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-api/docs/pricing)
+(the rate in force on the refresh day; retired ids the API routes to a newer
+model, per the deprecations page, are priced as that model).
 
 ### Limits
 
 What the provider APIs do not give, stated plainly:
 
-- **No prepaid credit balance** on either provider. `budget` shows the
+- **No prepaid credit balance** on any provider. `budget` shows the
   billing page link instead; `--alert-at` against an OpenAI spend limit is the
   closest warning the APIs allow.
 - **Anthropic's Admin API is documented as organization accounts only.** If
@@ -193,6 +244,8 @@ What the provider APIs do not give, stated plainly:
 - **OpenAI spend limits and spend alerts are readable**, for the org and per
   project; `budget` compares month-to-date cost against them.
 - Anthropic's cost report has no per-key split and leaves Priority Tier out.
+- **Gemini has no cost API.** Without the BigQuery billing export its money
+  is the `usage` estimate; usage has no per-key split.
 - Usage data lags about five minutes; Claude Code analytics about an hour.
 
 ## Development

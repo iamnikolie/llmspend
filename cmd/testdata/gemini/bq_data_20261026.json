@@ -1,0 +1,4 @@
+{"totalRows":"5","pageToken":"page_test_2","rows":[
+{"f":[{"v":{"f":[{"v":"SVC"},{"v":"Gemini API"}]}},{"v":{"f":[{"v":"SKU"},{"v":"Gemini 3.8 Flash input tokens"}]}},{"v":"1.7930088E9"},{"v":{"f":[{"v":"gen-lang-client-test-alpha"},{"v":"x"}]}},{"v":"19.0"},{"v":"PLN"},{"v":"3.8"},{"v":[{"v":{"f":[{"v":"Free tier"},{"v":"-3.8"}]}}]}]},
+{"f":[{"v":{"f":[{"v":"SVC"},{"v":"Compute Engine"}]}},{"v":{"f":[{"v":"SKU"},{"v":"N1 core"}]}},{"v":"1.7930088E9"},{"v":{"f":[{"v":"gen-lang-client-test-alpha"},{"v":"x"}]}},{"v":"100.0"},{"v":"PLN"},{"v":"3.8"},{"v":[]}]},
+{"f":[{"v":{"f":[{"v":"SVC"},{"v":"Gemini API"}]}},{"v":{"f":[{"v":"SKU"},{"v":"Gemini 3.8 Flash input tokens"}]}},{"v":"1.7930088E9"},{"v":{"f":[{"v":"some-other-project"},{"v":"x"}]}},{"v":"50.0"},{"v":"PLN"},{"v":"3.8"},{"v":[]}]}]}

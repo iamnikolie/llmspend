@@ -16,6 +16,9 @@ var (
 	addOrgID     string
 	addBaseURL   string
 	addWorkspace string
+	addAccount   string
+	addProjects  []string
+	addBilling   string
 )
 
 // readKey picks the key: --api-key, else the first non-empty stdin line.
@@ -33,16 +36,18 @@ func readKey(flag string, r io.Reader) (string, error) {
 
 var configCmd = &cobra.Command{
 	Use:   "config",
-	Short: "Manage admin keys: one org entry per provider org, in profiles",
+	Short: "Manage admin keys (Gemini: gcloud logins): one org entry per provider org, in profiles",
 }
 
 var configAddCmd = &cobra.Command{
 	Use:     "add <name>",
 	Aliases: []string{"init", "set"},
-	Short:   "Save an org's admin key (writes ~/.llmspend/<profile>/config.yaml, mode 0600)",
+	Short:   "Save an org's admin key, or a Gemini org's gcloud login (writes ~/.llmspend/<profile>/config.yaml, mode 0600)",
 	Example: `  pbpaste | llmspend config add personal-openai --provider openai --org-id org-…
   llmspend config add team-anthropic --provider anthropic     # prompts; paste the key
-  llmspend --config work config add acme --provider openai --api-key "$KEY"`,
+  llmspend --config work config add acme --provider openai --api-key "$KEY"
+  llmspend config add gemini --provider gemini --account me@gmail.com   # no key: gcloud login
+  llmspend config add gemini --provider gemini --account me@gmail.com --billing-table billing-proj.billing_export.gcp_billing_export_v1_XXXXXX_XXXXXX_XXXXXX`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
@@ -52,6 +57,9 @@ var configAddCmd = &cobra.Command{
 		p, err := config.ValidProvider(addProvider)
 		if err != nil {
 			return fmt.Errorf("--provider: %w", err)
+		}
+		if p == config.Gemini {
+			return addGemini(name)
 		}
 		if addKey == "" {
 			hint := "https://platform.openai.com/settings/organization/admin-keys, Permissions: Read only"
@@ -79,6 +87,28 @@ var configAddCmd = &cobra.Command{
 		fmt.Fprintf(stdout, "Saved %s (%s, key %s) to %s\nCheck it: llmspend orgs --org %s\n", name, p, config.MaskKey(key), path, name)
 		return nil
 	},
+}
+
+// addGemini saves a Gemini org: no key, a gcloud login and the projects.
+func addGemini(name string) error {
+	if addKey != "" {
+		return fmt.Errorf("gemini takes no key: llmspend reads it with a gcloud login (--account, or Application Default Credentials without it)")
+	}
+	c, err := config.Load(profile)
+	if err != nil {
+		return err
+	}
+	c.Upsert(config.Org{Name: name, Provider: config.Gemini, Account: addAccount, Projects: addProjects, BillingTable: addBilling, BaseURL: addBaseURL})
+	path, err := config.Save(profile, c)
+	if err != nil {
+		return err
+	}
+	login := "gcloud ADC"
+	if addAccount != "" {
+		login = "gcloud " + addAccount
+	}
+	fmt.Fprintf(stdout, "Saved %s (gemini, %s) to %s\nCheck it: llmspend orgs --org %s\n", name, login, path, name)
+	return nil
 }
 
 var configRmCmd = &cobra.Command{
@@ -119,10 +149,21 @@ var configShowCmd = &cobra.Command{
 			if o.FromEnv {
 				src = "env"
 			}
-			rows = append(rows, map[string]any{
+			row := map[string]any{
 				"name": o.Name, "provider": o.Provider, "org_id": o.OrgID, "key": config.MaskKey(o.AdminKey),
 				"base_url": config.BaseURLFor(o), "source": src,
-			})
+			}
+			if o.Provider == config.Gemini {
+				row["key"] = "gcloud ADC"
+				if o.Account != "" {
+					row["key"] = "gcloud " + o.Account
+				}
+				row["org_id"] = strings.Join(o.Projects, ",")
+				if o.BillingTable != "" {
+					row["base_url"] = "billing export " + o.BillingTable
+				}
+			}
+			rows = append(rows, row)
 		}
 		if err := emitRows(rows, []string{"name", "provider", "org_id", "key", "base_url", "source"}); err != nil {
 			return err
@@ -148,11 +189,14 @@ var configPathCmd = &cobra.Command{
 
 func init() {
 	f := configAddCmd.Flags()
-	f.StringVar(&addProvider, "provider", "", "openai or anthropic (required)")
+	f.StringVar(&addProvider, "provider", "", "openai, anthropic or gemini (required)")
 	f.StringVar(&addKey, "api-key", "", "admin key; else read from stdin")
 	f.StringVar(&addOrgID, "org-id", "", "expected org id (org-… / uuid); 'orgs' warns on mismatch")
 	f.StringVar(&addBaseURL, "base-url", "", "API root override (proxies, tests)")
 	f.StringVar(&addWorkspace, "workspace-id", "", "Anthropic: send anthropic-workspace-id (only if the API asks for it)")
+	f.StringVar(&addAccount, "account", "", "Gemini: gcloud account to read with (default: Application Default Credentials)")
+	f.StringSliceVar(&addProjects, "projects", nil, "Gemini: Google Cloud project ids (default: every gen-lang-client-* project the login sees)")
+	f.StringVar(&addBilling, "billing-table", "", "Gemini: Cloud Billing export table, project.dataset.table (exact cost)")
 	_ = configAddCmd.MarkFlagRequired("provider")
 	configCmd.AddCommand(configAddCmd, configRmCmd, configShowCmd, configPathCmd)
 	rootCmd.AddCommand(configCmd)

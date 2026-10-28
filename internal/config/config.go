@@ -19,19 +19,24 @@ import (
 const (
 	OpenAI    = "openai"
 	Anthropic = "anthropic"
+	Gemini    = "gemini"
 )
 
 // DefaultProfile is used when neither --config nor LLMSPEND_CONFIG names one.
 const DefaultProfile = "default"
 
-// Default API roots. LLMSPEND_OPENAI_BASE_URL / LLMSPEND_ANTHROPIC_BASE_URL
-// override them (tests, proxies); an org's base_url beats both.
+// Default API roots. LLMSPEND_OPENAI_BASE_URL / LLMSPEND_ANTHROPIC_BASE_URL /
+// LLMSPEND_GEMINI_BASE_URL override them (tests, proxies); an org's base_url
+// beats both. Gemini has no single root: its base URL, when set, prefixes
+// /monitoring, /crm and /bigquery instead of the googleapis.com hosts.
 const (
 	OpenAIBaseURL    = "https://api.openai.com/v1"
 	AnthropicBaseURL = "https://api.anthropic.com/v1"
 )
 
-// Org is one provider organization reached with one admin key.
+// Org is one provider organization reached with one admin key. A Gemini
+// org has no key: it is a set of Google Cloud projects read with a gcloud
+// login.
 type Org struct {
 	Name     string `yaml:"name"`
 	Provider string `yaml:"provider"`
@@ -41,6 +46,13 @@ type Org struct {
 	// WorkspaceID is sent as anthropic-workspace-id, for a personal key the
 	// API asks to pin to a workspace. Empty means no header (the default).
 	WorkspaceID string `yaml:"workspace_id,omitempty"`
+	// Gemini: the gcloud account whose token reads the projects (empty =
+	// Application Default Credentials), the project ids (empty = every
+	// gen-lang-client-* project the account sees) and the Cloud Billing
+	// export table (project.dataset.table) once billing export is on.
+	Account      string   `yaml:"account,omitempty"`
+	Projects     []string `yaml:"projects,omitempty"`
+	BillingTable string   `yaml:"billing_table,omitempty"`
 	// FromEnv marks an org synthesized from OPENAI_ADMIN_KEY / ANTHROPIC_ADMIN_KEY.
 	FromEnv bool `yaml:"-"`
 }
@@ -67,8 +79,10 @@ func ValidProvider(p string) (string, error) {
 		return OpenAI, nil
 	case Anthropic, "claude":
 		return Anthropic, nil
+	case Gemini, "google":
+		return Gemini, nil
 	}
-	return "", fmt.Errorf("unknown provider %q: use openai or anthropic", p)
+	return "", fmt.Errorf("unknown provider %q: use openai, anthropic or gemini", p)
 }
 
 // KeyWarning returns a note about a key's kind; it never rejects one, the
@@ -226,7 +240,7 @@ func (c *Config) Select(provider string, names []string) ([]Org, error) {
 	}
 	if len(out) == 0 {
 		if len(c.Orgs) == 0 {
-			return nil, errors.New("no orgs configured: run 'llmspend config add <name> --provider openai|anthropic' with an admin key (see 'llmspend skill' → Setup)")
+			return nil, errors.New("no orgs configured: run 'llmspend config add <name> --provider openai|anthropic|gemini' (see 'llmspend skill' → Setup)")
 		}
 		return nil, fmt.Errorf("no %s org configured in this profile", provider)
 	}
@@ -243,6 +257,9 @@ func BaseURLFor(o Org) string {
 			return v
 		}
 		return OpenAIBaseURL
+	}
+	if o.Provider == Gemini {
+		return os.Getenv("LLMSPEND_GEMINI_BASE_URL")
 	}
 	if v := os.Getenv("LLMSPEND_ANTHROPIC_BASE_URL"); v != "" {
 		return v

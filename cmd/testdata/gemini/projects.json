@@ -1,0 +1,5 @@
+{"projects":[
+ {"projectId":"gen-lang-client-test-alpha","name":"Alpha App","lifecycleState":"ACTIVE","createTime":"2026-07-01T10:00:00.000Z"},
+ {"projectId":"gen-lang-client-test-beta","name":"Beta","lifecycleState":"ACTIVE","createTime":"2026-08-01T10:00:00.000Z"},
+ {"projectId":"gen-lang-client-test-gone","name":"Gone","lifecycleState":"DELETE_REQUESTED","createTime":"2026-01-01T10:00:00.000Z"}
+]}

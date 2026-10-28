@@ -4,6 +4,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -132,5 +133,70 @@ func TestLoadSave(t *testing.T) {
 	}
 	if p, ok := got.Lookup("openai", "m"); !ok || p.Output != 2 {
 		t.Fatalf("round trip: %+v", got)
+	}
+	// Providers the file lacks come from the built-in snapshot.
+	if _, ok := got.Lookup("anthropic", "claude-opus-4-5"); !ok {
+		t.Fatal("anthropic rows not filled from the snapshot")
+	}
+	if _, ok := got.Lookup("openai", "gpt-4o"); ok {
+		t.Fatal("a refreshed provider must keep the file's rows only")
+	}
+}
+
+func TestParseGemini(t *testing.T) {
+	ps := ParseGemini(read(t, "gemini-pricing.md"))
+	if len(ps) < 25 {
+		t.Fatalf("only %d models parsed", len(ps))
+	}
+	// The current rate, not the one starting later; the date goes in Note.
+	p, ok := find(ps, "gemini-3.8-flash")
+	if !ok || p.Input != 0.75 || p.Output != 3.75 || p.CachedInput != 0.075 || p.Note != "until December 31, 2026" {
+		t.Fatalf("gemini-3.8-flash = %+v", p)
+	}
+	// Text and image output at their own rates.
+	p, _ = find(ps, "gemini-3-pro-image")
+	if p.Input != 2 || p.Output != 12 || p.OutputImage != 120 || p.OutputRate("image") != 120 || p.OutputRate("text") != 12 {
+		t.Fatalf("gemini-3-pro-image = %+v", p)
+	}
+	p, _ = find(ps, "gemini-omni-1.1-flash")
+	if p.Output != 9 || p.OutputVideo != 17.5 {
+		t.Fatalf("omni = %+v", p)
+	}
+	// Speech: audio is the only output.
+	p, _ = find(ps, "gemini-3.8-flash-tts")
+	if p.Input != 0.5 || p.Output != 9 || p.OutputAudio != 9 {
+		t.Fatalf("tts = %+v", p)
+	}
+	// "$3.00 or $0.005/min (audio)": the token rate takes the audio label.
+	p, _ = find(ps, "gemini-3.8-live")
+	if p.Output != 4.5 || p.OutputAudio != 12 {
+		t.Fatalf("live = %+v", p)
+	}
+	// Music per song; per-image-only models are left out.
+	p, _ = find(ps, "lyria-3-clip-preview")
+	if p.PerRequest != 0.04 || p.Input != 0 || p.Note != "per song" {
+		t.Fatalf("lyria = %+v", p)
+	}
+	if p, ok := find(ps, "gemini-2.5-flash-image"); ok {
+		t.Fatalf("per-image model priced per token: %+v", p)
+	}
+	if p, _ = find(ps, "gemini-embedding-2"); p.Input != 0.2 || p.Output != 0 {
+		t.Fatalf("embedding = %+v", p)
+	}
+	for _, p := range ps {
+		if p.Provider != "gemini" || p.Model == "" || strings.Contains(p.Model, " ") {
+			t.Fatalf("bad row %+v", p)
+		}
+	}
+
+	routed := GeminiRouted(ps, read(t, "gemini-deprecations.md"))
+	p, ok = find(routed, "gemini-3.7-flash")
+	if !ok || p.Input != 0.75 || !strings.HasPrefix(p.Note, "routed to gemini-3.8-flash") {
+		t.Fatalf("routed 3.7 = %+v", p)
+	}
+	tab := &Table{}
+	tab.Replace("gemini", GeminiURL, time.Now(), routed)
+	if p, ok := tab.Lookup("gemini", "lyria-3-clip"); !ok || p.Model != "lyria-3-clip-preview" {
+		t.Fatalf("usage ids drop -preview: %+v %v", p, ok)
 	}
 }

@@ -1,0 +1,12 @@
+{"id":"billing-test:billing_export.gcp_billing_export_v1_TEST","timePartitioning":{"type":"DAY"},"schema":{"fields":[
+ {"name":"billing_account_id","type":"STRING","mode":"NULLABLE"},
+ {"name":"service","type":"RECORD","mode":"NULLABLE","fields":[{"name":"id","type":"STRING"},{"name":"description","type":"STRING"}]},
+ {"name":"sku","type":"RECORD","mode":"NULLABLE","fields":[{"name":"id","type":"STRING"},{"name":"description","type":"STRING"}]},
+ {"name":"usage_start_time","type":"TIMESTAMP","mode":"NULLABLE"},
+ {"name":"usage_end_time","type":"TIMESTAMP","mode":"NULLABLE"},
+ {"name":"project","type":"RECORD","mode":"NULLABLE","fields":[{"name":"id","type":"STRING"},{"name":"name","type":"STRING"}]},
+ {"name":"cost","type":"FLOAT","mode":"NULLABLE"},
+ {"name":"currency","type":"STRING","mode":"NULLABLE"},
+ {"name":"currency_conversion_rate","type":"FLOAT","mode":"NULLABLE"},
+ {"name":"credits","type":"RECORD","mode":"REPEATED","fields":[{"name":"name","type":"STRING"},{"name":"amount","type":"FLOAT"}]}
+]}}

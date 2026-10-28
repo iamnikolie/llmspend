@@ -101,6 +101,10 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		default:
 			file = "anthropic/" + p + ".json"
 		}
+	case strings.HasPrefix(r.URL.Path, "/gemini/"):
+		if file = geminiFixture(w, r); file == "" {
+			return
+		}
 	}
 	b, err := os.ReadFile(filepath.Join("testdata", file))
 	if err != nil {
@@ -492,7 +496,8 @@ func TestPricesAndSkill(t *testing.T) {
 
 func TestPricesRefreshFromFakePages(t *testing.T) {
 	setup(t)
-	pages := map[string]string{"/openai": "openai-pricing.md", "/anthropic": "anthropic-pricing.md"}
+	pages := map[string]string{"/openai": "openai-pricing.md", "/anthropic": "anthropic-pricing.md",
+		"/gemini/gemini-api/docs/pricing": "gemini-pricing.md", "/gemini/gemini-api/docs/deprecations": "gemini-deprecations.md"}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for prefix, f := range pages {
 			if strings.HasPrefix(r.URL.Path, prefix) {
@@ -511,11 +516,16 @@ func TestPricesRefreshFromFakePages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err=%v stderr=%s", err, errOut)
 	}
-	if rows := decode(t, out); len(rows) != 2 {
+	if rows := decode(t, out); len(rows) != 3 {
 		t.Fatalf("rows = %v", rows)
 	}
 	if _, err := os.Stat(filepath.Join(os.Getenv("LLMSPEND_HOME"), "prices.json")); err != nil {
 		t.Fatal("prices.json not written")
+	}
+	// The deprecations page prices a routed id as its target.
+	out, _, err = run(t, "prices", "gemini-3.7-flash", "--json")
+	if rows := decode(t, out); err != nil || len(rows) != 1 || !strings.Contains(rows[0]["note"].(string), "routed to gemini-3.8-flash") {
+		t.Fatalf("routed: %v %s", err, out)
 	}
 }
 
@@ -525,8 +535,11 @@ type rewrite struct{ base string }
 
 func (r rewrite) RoundTrip(req *http.Request) (*http.Response, error) {
 	prefix := "/openai"
-	if strings.Contains(req.URL.Host, "claude") {
+	switch {
+	case strings.Contains(req.URL.Host, "claude"):
 		prefix = "/anthropic"
+	case strings.Contains(req.URL.Host, "google"):
+		prefix = "/gemini"
 	}
 	u := r.base + prefix + req.URL.Path
 	nr, _ := http.NewRequestWithContext(req.Context(), req.Method, u, nil)

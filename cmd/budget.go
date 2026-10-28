@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strings"
 	"time"
 
+	"github.com/iamnikolie/llmspend/internal/gemini"
 	"github.com/iamnikolie/llmspend/internal/openai"
 	"github.com/iamnikolie/llmspend/internal/spend"
 	"github.com/spf13/cobra"
@@ -29,7 +31,9 @@ var budgetCmd = &cobra.Command{
 	Long: "Month-to-date billed cost next to the hard spend limit and spend alerts the API\n" +
 		"exposes. OpenAI: org and project spend limits plus org spend alerts. Anthropic:\n" +
 		"Console orgs have no spend-limit API (it is Enterprise-only), so only the cost shows.\n" +
-		"Neither API returns the prepaid credit balance; the note column links the billing page.\n\n" +
+		"Neither API returns the prepaid credit balance; the note column links the billing page.\n" +
+		"Gemini: month-to-date cost from the billing export when billing_table is set; no\n" +
+		"spend-limit or prepay-balance API either way.\n\n" +
 		"--alert-at 80 exits with status 3 when any limit is at or above 80% used, for cron.",
 	Example: `  llmspend budget
   llmspend budget -p openai --projects
@@ -54,6 +58,21 @@ var budgetCmd = &cobra.Command{
 			}
 		}
 		err = eachOrg(ts, func(t target) error {
+			if t.gm != nil {
+				row := map[string]any{"provider": t.org.Provider, "org": t.org.Name, "scope": "org"}
+				cs, err := t.gm.Costs(ctx, from, time.Time{})
+				switch {
+				case errors.Is(err, gemini.ErrNoBillingExport):
+					row["note"] = "no cost, limit or prepay-balance API; estimate with 'llmspend usage -p gemini --since " + day(from) + "', balance in Google AI Studio → Billing"
+				case err != nil:
+					return err
+				default:
+					row["spent_mtd"] = usd(sumCost(cs))
+					row["note"] = "billing export; no limit or prepay-balance API, see Google AI Studio → Billing"
+				}
+				rows = append(rows, row)
+				return nil
+			}
 			if t.an != nil {
 				cs, err := t.an.Costs(ctx, from, time.Time{}, nil)
 				if err != nil {

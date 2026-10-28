@@ -66,6 +66,9 @@ func TestValidation(t *testing.T) {
 	if ValidName("../x") == nil || ValidName("ok-name_1.2") != nil {
 		t.Fatal("ValidName")
 	}
+	if p, err := ValidProvider("google"); err != nil || p != Gemini {
+		t.Fatalf("google = %q %v", p, err)
+	}
 	if p, err := ValidProvider("Claude"); err != nil || p != Anthropic {
 		t.Fatal("ValidProvider claude")
 	}

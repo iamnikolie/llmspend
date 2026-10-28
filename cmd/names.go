@@ -18,12 +18,18 @@ func (t target) projects(ctx context.Context) ([]spend.Project, error) {
 	if t.oa != nil {
 		return t.oa.Projects(ctx, true)
 	}
+	if t.gm != nil {
+		return t.gm.Projects(ctx)
+	}
 	return t.an.Workspaces(ctx, true)
 }
 
 // keys lists every key the admin API shows: OpenAI project keys (one call
 // per project) plus admin keys; Anthropic API keys with workspace names.
 func (t target) keys(ctx context.Context, ps []spend.Project) ([]spend.Key, error) {
+	if t.gm != nil {
+		return nil, nil // usage metrics have no per-key split, so keys are not listed
+	}
 	byID := map[string]string{}
 	for _, p := range ps {
 		byID[p.ID] = p.Name

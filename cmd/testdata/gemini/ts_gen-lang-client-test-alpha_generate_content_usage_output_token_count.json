@@ -1,0 +1,6 @@
+{"timeSeries":[
+ {"metric":{"labels":{"model":"gemini-3.8-flash","output_modality":"text"}},"points":[{"interval":{"startTime":"2026-10-26T00:00:00Z","endTime":"2026-10-27T00:00:00Z"},"value":{"int64Value":"1000000"}}]},
+ {"metric":{"labels":{"model":"gemini-3-pro-image","output_modality":"image"}},"points":[{"interval":{"startTime":"2026-10-26T00:00:00Z","endTime":"2026-10-27T00:00:00Z"},"value":{"int64Value":"100000"}}]},
+ {"metric":{"labels":{"model":"gemini-3-pro-image","output_modality":"text"}},"points":[{"interval":{"startTime":"2026-10-26T00:00:00Z","endTime":"2026-10-27T00:00:00Z"},"value":{"int64Value":"10000"}}]},
+ {"metric":{"labels":{"model":"lyria-3-clip","output_modality":"text"}},"points":[{"interval":{"startTime":"2026-10-26T00:00:00Z","endTime":"2026-10-27T00:00:00Z"},"value":{"int64Value":"500"}}]}
+]}

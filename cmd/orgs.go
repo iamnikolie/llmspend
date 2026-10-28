@@ -3,8 +3,10 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/iamnikolie/llmspend/internal/config"
+	"github.com/iamnikolie/llmspend/internal/spend"
 	"github.com/spf13/cobra"
 )
 
@@ -12,6 +14,9 @@ import (
 // /organizations/me, OpenAI's /v1/me matched by the org slug. Falls back to
 // the org_id in the config, then to the OpenAI slug.
 func (t target) orgID(ctx context.Context) string {
+	if t.gm != nil {
+		return t.gm.Login()
+	}
 	if t.an != nil {
 		if o, err := t.an.Me(ctx); err == nil {
 			return o.ID
@@ -33,7 +38,7 @@ func (t target) orgID(ctx context.Context) string {
 var orgsCmd = &cobra.Command{
 	Use:     "orgs",
 	Aliases: []string{"whoami", "check"},
-	Short:   "Check each configured admin key and show the org it belongs to",
+	Short:   "Check each configured admin key (Gemini: gcloud login) and show the org it belongs to",
 	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ts, err := targets("")
@@ -48,6 +53,18 @@ var orgsCmd = &cobra.Command{
 			row := map[string]any{"provider": t.org.Provider, "org": t.org.Name, "key": config.MaskKey(t.org.AdminKey), "status": "ok"}
 			if t.org.FromEnv {
 				row["org"] = t.org.Name + " (env)"
+			}
+			if t.gm != nil {
+				row["key"] = t.gm.Login()
+				ps, err := t.gm.Projects(ctx)
+				if err != nil {
+					row["status"] = "error: " + firstLine(err.Error())
+					bad++
+				} else {
+					row["org_id"], row["org_name"] = projectList(ps), fmt.Sprintf("%d projects", len(ps))
+				}
+				rows = append(rows, row)
+				continue
 			}
 			if t.an != nil {
 				o, err := t.an.Me(ctx)
@@ -83,6 +100,15 @@ var orgsCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+// projectList names Gemini projects for the org_id column.
+func projectList(ps []spend.Project) string {
+	ids := make([]string, 0, len(ps))
+	for _, p := range ps {
+		ids = append(ids, p.ID)
+	}
+	return strings.Join(ids, ",")
 }
 
 func firstLine(s string) string {

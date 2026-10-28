@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/spf13/cobra"
@@ -26,6 +27,10 @@ var keysCmd = &cobra.Command{
 		defer cancel()
 		var rows []map[string]any
 		err = eachOrg(ts, func(t target) error {
+			if t.gm != nil {
+				fmt.Fprintf(stderr, "note: %s (gemini): keys are not listed (Gemini usage has no per-key split); see 'llmspend projects'\n", t.org.Name)
+				return nil
+			}
 			ps, err := t.projects(ctx)
 			if err != nil {
 				return err
@@ -71,7 +76,7 @@ var keysCmd = &cobra.Command{
 var projectsCmd = &cobra.Command{
 	Use:     "projects",
 	Aliases: []string{"workspaces"},
-	Short:   "OpenAI projects and Anthropic workspaces per org",
+	Short:   "OpenAI projects, Anthropic workspaces and Gemini Google Cloud projects per org",
 	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ts, err := targets("")

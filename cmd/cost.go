@@ -25,7 +25,10 @@ var costCmd = &cobra.Command{
 	Long: "Billed cost from OpenAI's Costs API and Anthropic's cost report, in USD.\n" +
 		"Without --since, the range is one calendar month (UTC): the current one, or --month.\n" +
 		"Anthropic's cost report has no per-key split (use 'usage --by key') and leaves out\n" +
-		"Priority Tier; OpenAI's has no per-model field, so --by model reads it from line items.",
+		"Priority Tier; OpenAI's has no per-model field, so --by model reads it from line items.\n" +
+		"Gemini has no cost API: its billed cost comes from the Cloud Billing export in BigQuery\n" +
+		"once billing_table is set (--by model groups by SKU); amount and currency show the\n" +
+		"billing account's own currency next to usd.",
 	Example: `  llmspend cost                        # this month so far, one row per org
   llmspend cost --month last --by model
   llmspend cost --month 2026-09 --by project
@@ -73,6 +76,7 @@ var costCmd = &cobra.Command{
 		agg := map[string]map[string]any{}
 		var order []string
 		var total float64
+		local := false
 		err = eachOrg(ts, func(t target) error {
 			cs, err := fetchCosts(ctx, t, from, to, dims)
 			if err != nil {
@@ -96,14 +100,24 @@ var costCmd = &cobra.Command{
 				if dims["line"] {
 					row["line_item"] = c.LineItem
 				}
-				k := fmt.Sprint(row["date"], "\x00", row["provider"], "\x00", row["org"], "\x00", row["project"], "\x00", row["key"], "\x00", row["model"], "\x00", row["line_item"])
+				if c.Currency != "" && c.Currency != "USD" {
+					row["currency"] = c.Currency
+					local = true
+				}
+				k := fmt.Sprint(row["date"], "\x00", row["provider"], "\x00", row["org"], "\x00", row["project"], "\x00", row["key"], "\x00", row["model"], "\x00", row["line_item"], "\x00", row["currency"])
 				cur, ok := agg[k]
 				if !ok {
 					row["usd"] = 0.0
+					if row["currency"] != nil {
+						row["amount"] = 0.0
+					}
 					agg[k], cur = row, row
 					order = append(order, k)
 				}
 				cur["usd"] = cur["usd"].(float64) + c.USD
+				if cur["currency"] != nil {
+					cur["amount"] = cur["amount"].(float64) + c.Amount
+				}
 				total += c.USD
 			}
 			return nil
@@ -115,6 +129,9 @@ var costCmd = &cobra.Command{
 		for _, k := range order {
 			r := agg[k]
 			r["usd"] = usd(r["usd"].(float64))
+			if a, ok := r["amount"].(float64); ok {
+				r["amount"] = usd(a)
+			}
 			rows = append(rows, r)
 		}
 		sort.SliceStable(rows, func(i, j int) bool {
@@ -138,6 +155,9 @@ var costCmd = &cobra.Command{
 			cols = append(cols, "line_item")
 		}
 		cols = append(cols, "usd")
+		if local {
+			cols = append(cols, "amount", "currency")
+		}
 		if err := emitRows(rows, cols); err != nil {
 			return err
 		}
@@ -147,6 +167,12 @@ var costCmd = &cobra.Command{
 }
 
 func fetchCosts(ctx context.Context, t target, from, to time.Time, dims map[string]bool) ([]spend.Cost, error) {
+	if t.gm != nil {
+		if dims["key"] {
+			return nil, fmt.Errorf("the Gemini billing export has no per-key split")
+		}
+		return t.gm.Costs(ctx, from, to)
+	}
 	var group []string
 	if t.oa != nil {
 		if dims["project"] {

@@ -61,13 +61,16 @@ var usageCmd = &cobra.Command{
 	Long: "Usage from every OpenAI Usage API family (completions, embeddings, moderations,\n" +
 		"decisions, images, speech, transcription, web_search, file_search,\n" +
 		"code_interpreter, vector_stores) and Anthropic's Messages usage report (kind\n" +
-		"messages). Token kinds show tokens; the others show a quantity and its unit.\n" +
+		"messages) and Gemini's Cloud Monitoring counts (generate, embeddings, predict).\n" +
+		"Token kinds show tokens; the others show a quantity and its unit.\n" +
 		"est_usd prices token kinds with the local table ('llmspend prices'); the billed\n" +
-		"amount, every kind included, is 'llmspend cost'.",
+		"amount, every kind included, is 'llmspend cost'. For Gemini est_usd is the only\n" +
+		"figure until the Cloud Billing export is configured.",
 	Example: `  llmspend usage                               # last 7 days, per model, every org
   llmspend usage --since 30d --by key          # which key burned what
   llmspend usage -p openai --by project,model
   llmspend usage --kind embeddings --since 30d --by key
+  llmspend usage -p gemini --since 30d --by project,model
   llmspend usage --since 24h --bucket 1h --by day`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -101,7 +104,7 @@ var usageCmd = &cobra.Command{
 		ctx, cancel := ctxOf(cmd)
 		defer cancel()
 
-		agg := &usageAgg{dims: dims, bucket: usageBucket, prices: table, rows: map[string]*usageRow{}, unpriced: map[string]bool{}}
+		agg := &usageAgg{dims: dims, bucket: usageBucket, prices: table, rows: map[string]*usageRow{}, unpriced: map[string]bool{}, perUnit: map[string]bool{}}
 		err = eachOrg(ts, func(t target) error {
 			us, err := fetchUsage(ctx, t, kinds, from, to, usageBucket, dims)
 			if err != nil {
@@ -121,11 +124,18 @@ var usageCmd = &cobra.Command{
 // anthropicKind is the one usage family Anthropic reports.
 const anthropicKind = "messages"
 
+// geminiKinds are the Gemini usage families: generateContent (text, image,
+// speech, music), embedContent, and predict (Imagen, Veo).
+var geminiKinds = []string{"generate", "embeddings", "predict"}
+
 // selectKinds reads --kind; empty means every kind of every provider.
 func selectKinds(in []string) (map[string]bool, error) {
 	all := map[string]bool{anthropicKind: true}
 	for _, k := range openai.Kinds {
 		all[k.Name] = true
+	}
+	for _, k := range geminiKinds {
+		all[k] = true
 	}
 	if len(in) == 0 {
 		return all, nil
@@ -137,6 +147,7 @@ func selectKinds(in []string) (map[string]bool, error) {
 		"stt": "transcription", "web_search_calls": "web_search", "file_search_calls": "file_search",
 		"code_interpreter_sessions": "code_interpreter", "vector_store": "vector_stores",
 		"message": "messages", "decision": "decisions",
+		"generate_content": "generate", "imagen": "predict", "veo": "predict",
 	}
 	out := map[string]bool{}
 	for _, k := range in {
@@ -165,6 +176,19 @@ func selectKinds(in []string) (map[string]bool, error) {
 // asked for. A kind the org cannot read is a stderr note; a rejected key
 // stops the org at the first call.
 func fetchUsage(ctx context.Context, t target, kinds map[string]bool, from, to time.Time, bucket string, dims map[string]bool) ([]spend.Usage, error) {
+	if t.gm != nil {
+		us, err := t.gm.Usage(ctx, from, to, bucket, dims["day"])
+		if err != nil {
+			return nil, err
+		}
+		out := us[:0]
+		for _, u := range us {
+			if kinds[u.Kind] {
+				out = append(out, u)
+			}
+		}
+		return out, nil
+	}
 	group := []string{"model"}
 	if dims["key"] {
 		group = append(group, "api_key_id")
@@ -221,13 +245,20 @@ type usageAgg struct {
 	rows     map[string]*usageRow
 	order    []string
 	unpriced map[string]bool
-	hasOA    bool
+	perUnit  map[string]bool // Gemini models with no token price (Imagen, Veo, per-image models)
+	free     bool            // Gemini free-tier rows seen
+	gemini   bool
+	hasReq   bool
 	hasQty   bool
 }
 
 // estimate prices token usage; kinds counted in other units are not priced
-// here (their billed amount is in 'cost').
+// here (their billed amount is in 'cost'). Gemini output is priced per
+// modality, music models per request (song), and free-tier use at zero.
 func estimate(tab *prices.Table, provider string, u spend.Usage) (float64, bool) {
+	if u.Free {
+		return 0, true
+	}
 	if u.Unit != "" {
 		return 0, false
 	}
@@ -235,18 +266,30 @@ func estimate(tab *prices.Table, provider string, u spend.Usage) (float64, bool)
 	if !ok {
 		return 0, false
 	}
+	if p.PerRequest > 0 {
+		return float64(u.Requests) * p.PerRequest, true
+	}
 	uncached := u.Input - u.CachedInput - u.CacheWrite
 	if uncached < 0 {
 		uncached = 0
 	}
-	return p.Cost(uncached, u.CachedInput, u.CacheWrite-u.CacheWrite1h, u.CacheWrite1h, u.Output), true
+	return p.Cost(uncached, u.CachedInput, u.CacheWrite-u.CacheWrite1h, u.CacheWrite1h, 0) + float64(u.Output)*p.OutputRate(u.Modality)/1e6, true
 }
 
 func (a *usageAgg) add(t target, n names, us []spend.Usage) {
-	if t.oa != nil {
-		a.hasOA = true
+	if t.oa != nil || t.gm != nil {
+		a.hasReq = true
+	}
+	if t.gm != nil {
+		a.gemini = true
 	}
 	for _, u := range us {
+		if u.Free {
+			a.free = true
+		}
+		if t.gm != nil && u.Kind == "predict" {
+			a.perUnit[u.Model] = true
+		}
 		r := usageRow{provider: t.org.Provider, org: t.org.Name, kind: u.Kind, unit: u.Unit}
 		if a.dims["day"] {
 			if a.bucket == "1h" {
@@ -325,7 +368,7 @@ func (a *usageAgg) emit() error {
 	if a.dims["model"] {
 		cols = append(cols, "model")
 	}
-	if a.hasOA {
+	if a.hasReq {
 		cols = append(cols, "requests")
 	}
 	cols = append(cols, "input", "cached", "cache_write", "output")
@@ -343,7 +386,7 @@ func (a *usageAgg) emit() error {
 			"key": r.key, "model": r.model, "input": r.input, "cached": r.cached,
 			"cache_write": r.write, "output": r.output,
 		}
-		if r.provider == "openai" {
+		if r.provider == "openai" || r.provider == "gemini" {
 			row["requests"] = r.requests
 		}
 		if r.unit != "" {
@@ -374,6 +417,8 @@ func (a *usageAgg) emit() error {
 			// usage rows do not separate.
 			if strings.HasPrefix(m, "openai/gpt-image") || strings.HasPrefix(m, "openai/dall-e") {
 				images = append(images, m)
+			} else if g, ok := strings.CutPrefix(m, "gemini/"); ok {
+				a.perUnit[g] = true
 			} else {
 				ms = append(ms, m)
 			}
@@ -387,12 +432,26 @@ func (a *usageAgg) emit() error {
 			fmt.Fprintf(stderr, "note: %s not estimated (image models bill text and image tokens at different rates); 'llmspend cost --by model' has their spend\n", strings.Join(images, ", "))
 		}
 	}
+	if len(a.perUnit) > 0 {
+		ms := make([]string, 0, len(a.perUnit))
+		for m := range a.perUnit {
+			ms = append(ms, m)
+		}
+		sort.Strings(ms)
+		fmt.Fprintf(stderr, "note: gemini %s not priced (billed per image or per second of video, or not on the pricing page); est_usd leaves them out\n", strings.Join(ms, ", "))
+	}
+	if a.free {
+		fmt.Fprintln(stderr, "note: Gemini free-tier use is counted at $0")
+	}
+	if a.gemini {
+		fmt.Fprintln(stderr, "note: Gemini est_usd is an estimate from Cloud Monitoring token counts: all input at the uncached rate, standard tier (no batch/priority), no grounding or caching storage fees; billed cost needs the billing export ('llmspend skill' → Gemini)")
+	}
 	return nil
 }
 
 func init() {
 	f := usageCmd.Flags()
-	f.StringSliceVar(&usageKinds, "kind", nil, "only these kinds (comma-separated): completions, embeddings, moderations, decisions, images, speech, transcription, web_search, file_search, code_interpreter, vector_stores, messages")
+	f.StringSliceVar(&usageKinds, "kind", nil, "only these kinds (comma-separated): completions, embeddings, moderations, decisions, images, speech, transcription, web_search, file_search, code_interpreter, vector_stores, messages, generate, predict")
 	f.StringVar(&usageSince, "since", "7d", "start: 7d, 24h, 2w, YYYY-MM-DD or RFC 3339")
 	f.StringVar(&usageUntil, "until", "", "end (exclusive; a bare date includes that day); default now")
 	f.StringSliceVar(&usageBy, "by", []string{"model"}, "group by model, key, project, day (comma-separated)")
