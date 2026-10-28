@@ -56,16 +56,16 @@ brews:
     repository:
       owner: iamnikolie
       name: homebrew-tap
-      token: "{{ envOrDefault \"HOMEBREW_TAP_TOKEN\" \"\" }}"
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
     commit_author:
       name: Mykola Klitovchenko
       email: mykola.klitovchenko@gmail.com
     commit_msg_template: "{{ .ProjectName }} {{ .Version }}"
     homepage: https://github.com/iamnikolie/llmspend
-    description: "Read-only OpenAI and Anthropic usage, cost, budgets and keys"
+    description: "Read-only OpenAI, Anthropic and Gemini usage, cost, budgets and keys"
     license: MIT
-    skip_upload: "{{ if isEnvSet \"HOMEBREW_TAP_TOKEN\" }}auto{{ else }}true{{ end }}"
+    skip_upload: auto
     install: |
       bin.install "llmspend"
     test: |
