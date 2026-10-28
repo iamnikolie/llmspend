@@ -184,6 +184,12 @@ rates, Lyria per song, free tier at $0) and is an **estimate**: all input at
 the uncached rate, standard tier, no grounding or cache-storage fees. Imagen,
 Veo and per-image-only models are listed as not priced.
 
+With a gcloud user login, Google bills the Monitoring calls to gcloud's own
+client project, whose per-user per-minute quota several runs in a row can
+use up (HTTP 429). llmspend backs off and retries; `--quota-project <id>`
+bills a project of your own instead (it needs the Cloud Monitoring API
+enabled).
+
 The exact figure needs the Cloud Billing export to BigQuery. Once
 `billing_table` is set, `cost` and `budget` read the export table with GET
 calls only (schema, then `tabledata.list` per daily partition; no SQL job,

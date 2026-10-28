@@ -121,12 +121,16 @@ func TestGeminiUsage(t *testing.T) {
 			t.Fatalf("stderr lacks %q: %s", want, errOut)
 		}
 	}
-	// The deleted project is not read; every series of the live ones is.
+	// The deleted project is not read. Alpha: 9 token series, then requests
+	// only for its tier (2): generate, Imagen and Veo.
 	if n := len(f.requests("gen-lang-client-test-gone")); n != 0 {
 		t.Fatalf("read a deleted project %d times", n)
 	}
-	if n := len(f.requests("/gemini/monitoring/v3/projects/gen-lang-client-test-alpha/timeSeries")); n != len(gemini.Metrics) {
-		t.Fatalf("alpha: %d series calls, want %d", n, len(gemini.Metrics))
+	if n := len(f.requests("/gemini/monitoring/v3/projects/gen-lang-client-test-alpha/timeSeries")); n != 12 {
+		t.Fatalf("alpha: %d series calls, want 12", n)
+	}
+	if n := len(f.requests("paid_tier_2_requests")); n != 1 || len(f.requests("embed_content_paid_tier_2_requests")) != 0 {
+		t.Fatalf("request series read for unused tiers: %v", f.requests("requests"))
 	}
 }
 

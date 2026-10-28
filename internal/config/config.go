@@ -53,6 +53,9 @@ type Org struct {
 	Account      string   `yaml:"account,omitempty"`
 	Projects     []string `yaml:"projects,omitempty"`
 	BillingTable string   `yaml:"billing_table,omitempty"`
+	// QuotaProject, when set, is sent as x-goog-user-project so Google
+	// bills the calls' quota to it instead of gcloud's shared client project.
+	QuotaProject string `yaml:"quota_project,omitempty"`
 	// FromEnv marks an org synthesized from OPENAI_ADMIN_KEY / ANTHROPIC_ADMIN_KEY.
 	FromEnv bool `yaml:"-"`
 }

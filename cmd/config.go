@@ -19,6 +19,7 @@ var (
 	addAccount   string
 	addProjects  []string
 	addBilling   string
+	addQuota     string
 )
 
 // readKey picks the key: --api-key, else the first non-empty stdin line.
@@ -98,7 +99,7 @@ func addGemini(name string) error {
 	if err != nil {
 		return err
 	}
-	c.Upsert(config.Org{Name: name, Provider: config.Gemini, Account: addAccount, Projects: addProjects, BillingTable: addBilling, BaseURL: addBaseURL})
+	c.Upsert(config.Org{Name: name, Provider: config.Gemini, Account: addAccount, Projects: addProjects, BillingTable: addBilling, QuotaProject: addQuota, BaseURL: addBaseURL})
 	path, err := config.Save(profile, c)
 	if err != nil {
 		return err
@@ -197,6 +198,7 @@ func init() {
 	f.StringVar(&addAccount, "account", "", "Gemini: gcloud account to read with (default: Application Default Credentials)")
 	f.StringSliceVar(&addProjects, "projects", nil, "Gemini: Google Cloud project ids (default: every gen-lang-client-* project the login sees)")
 	f.StringVar(&addBilling, "billing-table", "", "Gemini: Cloud Billing export table, project.dataset.table (exact cost)")
+	f.StringVar(&addQuota, "quota-project", "", "Gemini: project to bill API quota to (needs the Cloud Monitoring API enabled)")
 	_ = configAddCmd.MarkFlagRequired("provider")
 	configCmd.AddCommand(configAddCmd, configRmCmd, configShowCmd, configPathCmd)
 	rootCmd.AddCommand(configCmd)

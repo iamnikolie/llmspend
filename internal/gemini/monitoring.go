@@ -17,51 +17,50 @@ import (
 const metricPrefix = "generativelanguage.googleapis.com/"
 
 // metric is one Cloud Monitoring series family. Google publishes token and
-// request counts only as quota usage, one metric per tier (tier 1 is
-// "paid_tier" or has no tier in its name), so every tier is read and added.
-// The output-token metric is the only non-quota one and the only one with
-// the output modality.
+// request counts only as quota usage, one metric per tier, so every tier is
+// read and added. The output-token metric is the only non-quota one and the
+// only one with the output modality.
 type metric struct {
 	kind  string // usage kind: "generate", "embeddings", "predict"
 	field string // "input", "output", "requests"
 	name  string // after metricPrefix
-	free  bool   // free tier: counted, not billed
+	tier  string // "1", "2", "3", "free"; "" for the output metric
 }
 
-func tiers(kind, field, pattern string, freeName string) []metric {
-	var out []metric
-	for _, t := range []string{"paid_tier", "paid_tier_2", "paid_tier_3"} {
-		out = append(out, metric{kind, field, strings.ReplaceAll(pattern, "TIER", t), false})
-	}
-	return append(out, metric{kind, field, freeName, true})
-}
-
-// Metrics is every series Usage reads, per project.
-var Metrics = func() []metric {
-	m := []metric{{"generate", "output", "generate_content_usage_output_token_count", false}}
-	m = append(m, tiers("generate", "input", "quota/generate_content_TIER_input_token_count/usage", "quota/generate_content_free_tier_input_token_count/usage")...)
-	m = append(m,
-		metric{"generate", "requests", "quota/generate_requests_per_model/usage", false},
-		metric{"generate", "requests", "quota/generate_content_paid_tier_2_requests/usage", false},
-		metric{"generate", "requests", "quota/generate_content_paid_tier_3_requests/usage", false},
-		metric{"generate", "requests", "quota/generate_content_free_tier_requests/usage", true},
-	)
-	m = append(m, tiers("embeddings", "input", "quota/embed_content_TIER_tokens/usage", "quota/embed_content_free_tier_tokens/usage")...)
-	m = append(m, tiers("embeddings", "requests", "quota/embed_content_TIER_requests/usage", "quota/embed_content_free_tier_requests/usage")...)
+// Metrics is every series Usage may read, per project. Token metrics are
+// always read; request metrics only for the tiers a project's tokens show
+// (Imagen and Veo, which have no token metric: the tiers of any tokens, or
+// every tier for a project with none), which halves the calls against the
+// per-user Monitoring quota.
+var Metrics = []metric{
+	{"generate", "output", "generate_content_usage_output_token_count", ""},
+	{"generate", "input", "quota/generate_content_paid_tier_input_token_count/usage", "1"},
+	{"generate", "input", "quota/generate_content_paid_tier_2_input_token_count/usage", "2"},
+	{"generate", "input", "quota/generate_content_paid_tier_3_input_token_count/usage", "3"},
+	{"generate", "input", "quota/generate_content_free_tier_input_token_count/usage", "free"},
+	{"embeddings", "input", "quota/embed_content_paid_tier_tokens/usage", "1"},
+	{"embeddings", "input", "quota/embed_content_paid_tier_2_tokens/usage", "2"},
+	{"embeddings", "input", "quota/embed_content_paid_tier_3_tokens/usage", "3"},
+	{"embeddings", "input", "quota/embed_content_free_tier_tokens/usage", "free"},
+	{"generate", "requests", "quota/generate_requests_per_model/usage", "1"},
+	{"generate", "requests", "quota/generate_content_paid_tier_2_requests/usage", "2"},
+	{"generate", "requests", "quota/generate_content_paid_tier_3_requests/usage", "3"},
+	{"generate", "requests", "quota/generate_content_free_tier_requests/usage", "free"},
+	{"embeddings", "requests", "quota/embed_content_paid_tier_requests/usage", "1"},
+	{"embeddings", "requests", "quota/embed_content_paid_tier_2_requests/usage", "2"},
+	{"embeddings", "requests", "quota/embed_content_paid_tier_3_requests/usage", "3"},
+	{"embeddings", "requests", "quota/embed_content_free_tier_requests/usage", "free"},
 	// Imagen (predict) and Veo (predictLongRunning) are billed per image and
 	// per second of video; only their request counts are published.
-	m = append(m,
-		metric{"predict", "requests", "quota/predict_requests_per_model/usage", false},
-		metric{"predict", "requests", "quota/predict_requests_per_model_paid_tier_2/usage", false},
-		metric{"predict", "requests", "quota/predict_requests_per_model_paid_tier_3/usage", false},
-		metric{"predict", "requests", "quota/predict_requests_free_tier_per_model/usage", true},
-		metric{"predict", "requests", "quota/predict_long_running_requests_per_model/usage", false},
-		metric{"predict", "requests", "quota/predict_long_running_requests_per_model_paid_tier_2/usage", false},
-		metric{"predict", "requests", "quota/predict_long_running_requests_per_model_paid_tier_3/usage", false},
-		metric{"predict", "requests", "quota/predict_long_running_requests_per_model_free_tier/usage", true},
-	)
-	return m
-}()
+	{"predict", "requests", "quota/predict_requests_per_model/usage", "1"},
+	{"predict", "requests", "quota/predict_requests_per_model_paid_tier_2/usage", "2"},
+	{"predict", "requests", "quota/predict_requests_per_model_paid_tier_3/usage", "3"},
+	{"predict", "requests", "quota/predict_requests_free_tier_per_model/usage", "free"},
+	{"predict", "requests", "quota/predict_long_running_requests_per_model/usage", "1"},
+	{"predict", "requests", "quota/predict_long_running_requests_per_model_paid_tier_2/usage", "2"},
+	{"predict", "requests", "quota/predict_long_running_requests_per_model_paid_tier_3/usage", "3"},
+	{"predict", "requests", "quota/predict_long_running_requests_per_model_free_tier/usage", "free"},
+}
 
 // parallel is how many Monitoring calls run at once.
 const parallel = 8
@@ -165,21 +164,96 @@ func (a *API) Usage(ctx context.Context, from, to time.Time, bucket string, spli
 		}
 	}
 
-	type job struct {
-		project string
-		m       metric
+	var (
+		mu  sync.Mutex
+		out []spend.Usage
+	)
+	// tiers[project][kind] holds the tiers with token use; "any" any kind.
+	tiers := map[string]map[string]map[string]bool{}
+	read := func(jobs []job) error {
+		return a.each(ctx, jobs, func(j job, pts []point) {
+			mu.Lock()
+			defer mu.Unlock()
+			for _, p := range pts {
+				u := spend.Usage{Kind: j.m.kind, Model: p.model, ProjectID: j.project, Free: j.m.tier == "free", NoKeySplit: true, Start: p.start}
+				if !split {
+					u.Start = from
+				}
+				switch j.m.field {
+				case "input":
+					u.Input = p.value
+					if tiers[j.project] == nil {
+						tiers[j.project] = map[string]map[string]bool{"any": {}}
+					}
+					if tiers[j.project][j.m.kind] == nil {
+						tiers[j.project][j.m.kind] = map[string]bool{}
+					}
+					tiers[j.project][j.m.kind][j.m.tier] = true
+					tiers[j.project]["any"][j.m.tier] = true
+				case "output":
+					u.Output, u.Modality = p.value, p.modality
+				case "requests":
+					u.Requests = p.value
+					if j.m.kind == "predict" {
+						u.Quantity, u.Unit = p.value, "requests"
+					}
+				}
+				out = append(out, u)
+			}
+		})
 	}
-	var jobs []job
+	var tokens, requests []job
 	for _, p := range ids {
 		for _, m := range Metrics {
-			jobs = append(jobs, job{p, m})
+			if m.field != "requests" {
+				tokens = append(tokens, job{p, m, from, end, period})
+			}
 		}
 	}
+	if err := read(tokens); err != nil {
+		return nil, err
+	}
+	for _, p := range ids {
+		for _, m := range Metrics {
+			if m.field != "requests" {
+				continue
+			}
+			used := tiers[p][m.kind]
+			if m.kind == "predict" {
+				used = tiers[p]["any"]
+				if len(used) == 0 {
+					used = map[string]bool{"1": true, "2": true, "3": true, "free": true}
+				}
+			}
+			if used[m.tier] {
+				requests = append(requests, job{p, m, from, end, period})
+			}
+		}
+	}
+	if err := read(requests); err != nil {
+		return nil, err
+	}
+	markFree(out)
+	return out, nil
+}
+
+// job is one series read: a metric of a project over a window.
+type job struct {
+	project   string
+	m         metric
+	from, end time.Time
+	period    time.Duration
+}
+
+// each reads jobs, parallel at a time, and hands each result to got. The
+// first error stops the rest.
+func (a *API) each(ctx context.Context, jobs []job, got func(job, []point)) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	var (
-		mu       sync.Mutex
-		out      []spend.Usage
-		firstErr error
 		wg       sync.WaitGroup
+		mu       sync.Mutex
+		firstErr error
 	)
 	ch := make(chan job)
 	for i := 0; i < parallel; i++ {
@@ -187,30 +261,17 @@ func (a *API) Usage(ctx context.Context, from, to time.Time, bucket string, spli
 		go func() {
 			defer wg.Done()
 			for j := range ch {
-				pts, err := a.series(ctx, j.project, j.m, from, end, period)
-				mu.Lock()
-				if err != nil && firstErr == nil {
-					firstErr = err
-				}
-				for _, p := range pts {
-					u := spend.Usage{Kind: j.m.kind, Model: p.model, ProjectID: j.project, Free: j.m.free, NoKeySplit: true, Start: p.start}
-					if !split {
-						u.Start = from
+				pts, err := a.series(ctx, j.project, j.m, j.from, j.end, j.period)
+				if err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = err
+						cancel()
 					}
-					switch j.m.field {
-					case "input":
-						u.Input = p.value
-					case "output":
-						u.Output, u.Modality = p.value, p.modality
-					case "requests":
-						u.Requests = p.value
-						if j.m.kind == "predict" {
-							u.Quantity, u.Unit = p.value, "requests"
-						}
-					}
-					out = append(out, u)
+					mu.Unlock()
+					continue
 				}
-				mu.Unlock()
+				got(j, pts)
 			}
 		}()
 	}
@@ -222,11 +283,7 @@ func (a *API) Usage(ctx context.Context, from, to time.Time, bucket string, spli
 	}
 	close(ch)
 	wg.Wait()
-	if firstErr != nil {
-		return nil, firstErr
-	}
-	markFree(out)
-	return out, nil
+	return firstErr
 }
 
 // markFree flags the output and request rows of a project and model whose

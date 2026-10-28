@@ -87,14 +87,34 @@ func New(c *client.Client, account string, projects []string, billingTable strin
 		}
 		return &cc
 	}
+	mon := mk(MonitoringURL, "/monitoring/v3")
+	// gcloud tokens bill Monitoring calls to gcloud's own client project,
+	// whose per-user per-minute quota a few runs in a row can use up: back
+	// off long enough for the minute to roll over.
+	if mon.RetryWait == 0 {
+		mon.RetryWait = 10 * time.Second
+	}
 	return &API{
-		Monitoring:   mk(MonitoringURL, "/monitoring/v3"),
+		Monitoring:   mon,
 		CRM:          mk(CRMURL, "/crm/v1"),
 		BigQuery:     mk(BigQueryURL, "/bigquery/v2"),
 		Account:      account,
 		ProjectIDs:   projects,
 		BillingTable: billingTable,
 		Now:          func() time.Time { return time.Now().UTC() },
+	}
+}
+
+// UseQuotaProject bills the API calls' quota to project (sent as
+// x-goog-user-project) instead of gcloud's shared client project. The
+// project needs the Cloud Monitoring API enabled and the login
+// serviceusage.services.use on it.
+func (a *API) UseQuotaProject(project string) {
+	if project == "" {
+		return
+	}
+	for _, c := range []*client.Client{a.Monitoring, a.CRM, a.BigQuery} {
+		c.Headers = map[string]string{"x-goog-user-project": project}
 	}
 }
 
@@ -140,6 +160,9 @@ func (a *API) get(ctx context.Context, c *client.Client, path string, q url.Valu
 			if a.Account == "" {
 				e.Fix = "log in again: 'gcloud auth application-default login'"
 			}
+		case http.StatusTooManyRequests:
+			e.Reason = "Cloud Monitoring per-user quota used up (gcloud's shared client project pays for gcloud logins)"
+			e.Fix = "wait a minute, or set quota_project: to a project with the Cloud Monitoring API enabled ('llmspend skill' → Gemini)"
 		case http.StatusForbidden:
 			e.Reason = "this login may not read it"
 			e.Fix = "use the login that owns the AI Studio projects (account: in the profile); it needs Monitoring Viewer on each project, and BigQuery Data Viewer on the billing export dataset"

@@ -193,6 +193,7 @@ func targets(only string) ([]target, error) {
 		case config.Gemini:
 			t.gm = gemini.New(newClient(o), o.Account, o.Projects, o.BillingTable)
 			t.gm.Now = now
+			t.gm.UseQuotaProject(o.QuotaProject)
 		default:
 			t.an = anthropic.New(newClient(o))
 		}

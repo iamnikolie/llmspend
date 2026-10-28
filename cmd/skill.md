@@ -150,7 +150,9 @@ llmspend has two sources:
    bucket: output tokens (`generate_content_usage_output_token_count`, split
    by output modality), input tokens and request counts (the quota-usage
    metrics of every tier: paid tier 1/2/3 and free), embedding tokens, and
-   Imagen/Veo request counts. About 25 GET calls per project, 8 in parallel.
+   Imagen/Veo request counts. 9 token series per project, then request
+   series only for the tiers those tokens show (about 12 GET calls per
+   project, 8 in parallel).
    `est_usd` = price table × tokens: text output at `output`, image/audio/video
    output at their own rates, Lyria per request (song), free-tier use at $0.
    **It is an estimate**: all input at the uncached rate (Monitoring does not
@@ -228,6 +230,14 @@ Administrator):
 ## Gotchas
 - Usage and cost data lag ~5 minutes (Claude Code ~1 hour; the Gemini billing
   export several hours).
+- Gemini with a gcloud user login: Google bills Monitoring calls to gcloud's
+  own client project, whose per-user per-minute quota a few runs in a row
+  can exhaust (HTTP 429). llmspend backs off 10 s, 20 s, 40 s; if it still
+  fails, wait a minute, or re-add the org with `--quota-project <project>`
+  (sent as `x-goog-user-project`; that project needs the Cloud Monitoring
+  API enabled and your login `serviceusage.services.use` on it). The AI
+  Studio `gen-lang-client-*` projects do not have the Monitoring API enabled
+  by default.
 - Gemini prices change on dates the page states; the table keeps the rate in
   force at refresh time, so refresh after such a date.
 - `usage` est_usd is an estimate for token kinds; `cost` is what the provider
